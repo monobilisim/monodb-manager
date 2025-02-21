@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PostgreSQL Users</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="h-full bg-gray-50 dark:bg-gray-900">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">PostgreSQL Users</h1>
+            <div class="flex items-center space-x-4">
+                <button onclick="toggleDarkMode()" class="rounded-lg p-2 hover:bg-gray-200 dark:hover:bg-gray-700">
+                    <!-- Sun icon -->
+                    <svg class="w-6 h-6 hidden dark:block text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
+                    <!-- Moon icon -->
+                    <svg class="w-6 h-6 block dark:hidden text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                    </svg>
+                </button>
+                <a href="/query" class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
+                    Active Queries
+                </a>
+                <div class="relative">
+                    <select id="dbFilter" onchange="filterUsers()" class="block w-48 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        <option value="">All Databases</option>
+                        {{range .Databases}}
+                        <option value="{{.}}">{{.}}</option>
+                        {{end}}
+                    </select>
+                </div>
+            </div>
+        </div>
+        
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-8">
+            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-6">Create New User</h2>
+            <form id="createUserForm">
+                <div class="space-y-6">
+                    <div>
+                        <label for="username" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
+                        <input type="text" id="username" name="username" required
+                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    </div>
+                    <div>
+                        <label for="password" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
+                        <input type="password" id="password" name="password" required
+                            class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Databases</label>
+                        <button type="button" 
+                            onclick="toggleDatabaseModal()"
+                            class="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800">
+                            Select Databases
+                            <span id="selectedCount" class="ml-2 text-gray-500 dark:text-gray-400">0 selected</span>
+                        </button>
+                    </div>
+                    <div class="space-y-2">
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Permissions</label>
+                        <div class="space-x-4">
+                            <label class="inline-flex items-center">
+                                <input type="checkbox" name="superuser" class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 dark:bg-gray-700">
+                                <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Superuser</span>
+                            </label>
+                            <label class="inline-flex items-center">
+                                <input type="checkbox" name="createdb" class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 dark:bg-gray-700">
+                                <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Create DB</span>
+                            </label>
+                            <label class="inline-flex items-center">
+                                <input type="checkbox" name="createrole" class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 dark:bg-gray-700">
+                                <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Create Role</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-6">
+                    <button type="submit" 
+                        class="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
+                        Create User
+                    </button>
+                </div>
+            </form>
+        </div>
+        
+        <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                <thead class="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Username</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Superuser</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Create DB</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Create Role</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Database Access</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Valid Until</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {{range .Users}}
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{{.Username}}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                            {{if .Superuser}}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100">Yes</span>
+                            {{else}}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">No</span>
+                            {{end}}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                            {{if .CreateDB}}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100">Yes</span>
+                            {{else}}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">No</span>
+                            {{end}}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                            {{if .CreateRole}}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100">Yes</span>
+                            {{else}}
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">No</span>
+                            {{end}}
+                        </td>
+                        <td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400" data-databases="{{range .Databases}}{{.}},{{end}}">
+                            <div class="flex flex-wrap gap-1">
+                                {{range .Databases}}
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100">
+                                    {{.}}
+                                </span>
+                                {{end}}
+                                {{if not .Databases}}
+                                <span class="text-gray-400 dark:text-gray-500 italic">No access</span>
+                                {{end}}
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                            {{if .ValidUntil}}{{.ValidUntil}}{{else}}Never{{end}}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                            <button onclick="showDeleteConfirmation('{{.Username}}')" 
+                                class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 font-medium">
+                                Delete
+                            </button>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="databaseModal" class="hidden fixed inset-0 bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75 flex items-center justify-center">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4">
+            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-white">Select Databases</h3>
+                    <button type="button" onclick="toggleDatabaseModal()" class="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300">
+                        <span class="sr-only">Close</span>
+                        <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="px-4 py-4 max-h-96 overflow-y-auto">
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    {{range .Databases}}
+                    <label class="inline-flex items-center p-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700">
+                        <input type="checkbox" name="databases" value="{{.}}" 
+                            onchange="updateSelectedCount()"
+                            class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 dark:bg-gray-700">
+                        <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">{{.}}</span>
+                    </label>
+                    {{end}}
+                </div>
+            </div>
+            <div class="px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-b-lg flex justify-end">
+                <button type="button" 
+                    onclick="toggleDatabaseModal()"
+                    class="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
+                    Done
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="deleteModal" class="hidden fixed inset-0 bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75 flex items-center justify-center">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                <h3 class="text-lg font-medium text-gray-900 dark:text-white">Confirm Delete</h3>
+            </div>
+            <div class="px-4 py-4">
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                    Are you sure you want to delete user <span id="deleteUsername" class="font-medium text-gray-900 dark:text-white"></span>? 
+                    This action cannot be undone.
+                </p>
+            </div>
+            <div class="px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-b-lg flex justify-end space-x-3">
+                <button type="button" 
+                    onclick="hideDeleteConfirmation()"
+                    class="inline-flex justify-center px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800">
+                    Cancel
+                </button>
+                <button type="button" 
+                    id="confirmDelete"
+                    class="inline-flex justify-center px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 dark:focus:ring-offset-gray-800">
+                    Delete
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="errorModal" class="hidden fixed inset-0 bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75 flex items-center justify-center">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4">
+            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                <h3 class="text-lg font-medium text-red-600 dark:text-red-400">Error</h3>
+            </div>
+            <div class="px-4 py-4">
+                <p id="errorMessage" class="text-sm text-gray-500 dark:text-gray-400"></p>
+            </div>
+            <div class="px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-b-lg flex justify-end">
+                <button type="button" 
+                    onclick="hideErrorModal()"
+                    class="inline-flex justify-center px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Tailwind config
+        tailwind.config = {
+            darkMode: 'class'
+        }
+
+        // Check for dark mode preference on load
+        document.documentElement.classList.toggle('dark', localStorage.getItem('darkMode') === 'true');
+
+        // All your functions
+        function toggleDarkMode() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            localStorage.setItem('darkMode', isDark);
+        }
+
+        function toggleDatabaseModal() {
+            const modal = document.getElementById('databaseModal');
+            modal.classList.toggle('hidden');
+        }
+
+        function updateSelectedCount() {
+            const count = document.querySelectorAll('input[name="databases"]:checked').length;
+            document.getElementById('selectedCount').textContent = count + ' selected';
+        }
+
+        function showDeleteConfirmation(username) {
+            document.getElementById('deleteUsername').textContent = username;
+            document.getElementById('confirmDelete').onclick = function() {
+                deleteUser(username);
+            };
+            document.getElementById('deleteModal').classList.remove('hidden');
+        }
+
+        function hideDeleteConfirmation() {
+            document.getElementById('deleteModal').classList.add('hidden');
+        }
+
+        function deleteUser(username) {
+            fetch('/api/v1/users/' + username, {
+                method: 'DELETE',
+            }).then(response => {
+                if (response.ok) {
+                    window.location.reload();
+                } else {
+                    return response.json().then(data => {
+                        throw new Error(data.error || 'Failed to delete user');
+                    });
+                }
+            }).catch(error => {
+                showError(error.message);
+            });
+            hideDeleteConfirmation();
+        }
+
+        function filterUsers() {
+            const filter = document.getElementById('dbFilter').value;
+            const rows = document.querySelectorAll('tbody tr');
+            
+            rows.forEach(row => {
+                if (!filter) {
+                    row.classList.remove('hidden');
+                    return;
+                }
+                
+                const dbTags = row.querySelector('[data-databases]').dataset.databases.split(',');
+                if (dbTags.includes(filter)) {
+                    row.classList.remove('hidden');
+                } else {
+                    row.classList.add('hidden');
+                }
+            });
+        }
+
+        function showError(message) {
+            document.getElementById('errorMessage').textContent = message;
+            document.getElementById('errorModal').classList.remove('hidden');
+        }
+
+        function hideErrorModal() {
+            document.getElementById('errorModal').classList.add('hidden');
+        }
+
+        function handleSubmit(e) {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const jsonData = {};
+            formData.forEach((value, key) => {
+                if (key === 'databases') {
+                    if (!jsonData[key]) {
+                        jsonData[key] = [];
+                    }
+                    jsonData[key].push(value);
+                } else {
+                    jsonData[key] = value;
+                }
+            });
+
+            fetch('/api/v1/users', {
+                method: 'POST',
+                body: JSON.stringify(jsonData),
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                }
+            }).then(async response => {
+                // If it's a redirect or success, just reload
+                if (response.ok) {
+                    window.location.href = '/';
+                    return;
+                }
+                // Only try to parse JSON for error responses
+                const data = await response.json();
+                throw new Error(data.error || 'Failed to create user');
+            }).catch(error => {
+                showError(error.message);
+            });
+        }
+
+        // Initialize form handler
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.getElementById('createUserForm');
+            if (form) {
+                form.addEventListener('submit', handleSubmit);
+            }
+        });
+    </script>
+</body>
+</html>
