@@ -139,10 +139,12 @@
                             {{if .ValidUntil}}{{.ValidUntil}}{{else}}Never{{end}}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                            {{if ne .Username "postgres"}}
                             <button onclick="showDeleteConfirmation('{{.Username}}')" 
                                 class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 font-medium">
                                 Delete
                             </button>
+                            {{end}}
                         </td>
                     </tr>
                     {{end}}
@@ -168,7 +170,7 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                     {{range .Databases}}
                     <label class="inline-flex items-center p-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700">
-                        <input type="checkbox" name="databases" value="{{.}}" 
+                        <input type="checkbox" name="databases[]" value="{{.}}" 
                             onchange="updateSelectedCount()"
                             class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 dark:bg-gray-700">
                         <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">{{.}}</span>
@@ -251,7 +253,7 @@
         }
 
         function updateSelectedCount() {
-            const count = document.querySelectorAll('input[name="databases"]:checked').length;
+            const count = document.querySelectorAll('input[name="databases[]"]:checked').length;
             document.getElementById('selectedCount').textContent = count + ' selected';
         }
 
@@ -315,17 +317,14 @@
         function handleSubmit(e) {
             e.preventDefault();
             const formData = new FormData(e.target);
-            const jsonData = {};
-            formData.forEach((value, key) => {
-                if (key === 'databases') {
-                    if (!jsonData[key]) {
-                        jsonData[key] = [];
-                    }
-                    jsonData[key].push(value);
-                } else {
-                    jsonData[key] = value;
-                }
-            });
+            const jsonData = {
+                username: formData.get('username'),
+                password: formData.get('password'),
+                superuser: formData.get('superuser'),
+                createdb: formData.get('createdb'),
+                createrole: formData.get('createrole'),
+                databases: Array.from(document.querySelectorAll('input[name="databases[]"]:checked')).map(cb => cb.value)
+            };
 
             fetch('/api/v1/users', {
                 method: 'POST',
@@ -335,14 +334,11 @@
                     'Content-Type': 'application/json'
                 }
             }).then(async response => {
-                // If it's a redirect or success, just reload
-                if (response.ok) {
-                    window.location.href = '/';
-                    return;
-                }
-                // Only try to parse JSON for error responses
                 const data = await response.json();
-                throw new Error(data.error || 'Failed to create user');
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to create user');
+                }
+                window.location.href = '/';
             }).catch(error => {
                 showError(error.message);
             });

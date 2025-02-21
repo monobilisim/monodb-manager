@@ -174,16 +174,13 @@ func InitServer() {
 
 			// Get database access for this user
 			dbRows, err := db.Query(`
-                SELECT datname 
-                FROM pg_database d 
-                WHERE EXISTS (
-                    SELECT 1 
-                    FROM pg_shdepend dep 
-                    JOIN pg_authid rol ON dep.refobjid = rol.oid 
-                    WHERE dep.dbid = d.oid 
-                    AND rol.rolname = $1
+                SELECT d.datname 
+                FROM pg_database d
+                WHERE d.datistemplate = false 
+                AND (
+                    SELECT has_database_privilege($1, d.datname, 'CONNECT')
+                    AND has_database_privilege($1, d.datname, 'CREATE')
                 )
-                AND datistemplate = false
                 ORDER BY datname
             `, user.Username)
 			if err == nil {
@@ -269,16 +266,13 @@ func InitServer() {
 
 				// Get database access for this user
 				dbRows, err := db.Query(`
-                    SELECT datname 
-                    FROM pg_database d 
-                    WHERE EXISTS (
-                        SELECT 1 
-                        FROM pg_shdepend dep 
-                        JOIN pg_authid rol ON dep.refobjid = rol.oid 
-                        WHERE dep.dbid = d.oid 
-                        AND rol.rolname = $1
+                    SELECT d.datname 
+                    FROM pg_database d
+                    WHERE d.datistemplate = false 
+                    AND (
+                        SELECT has_database_privilege($1, d.datname, 'CONNECT')
+                        AND has_database_privilege($1, d.datname, 'CREATE')
                     )
-                    AND datistemplate = false
                     ORDER BY datname
                 `, user.Username)
 				if err == nil {
@@ -326,7 +320,7 @@ func InitServer() {
 
 		v1.POST("/users", func(c *gin.Context) {
 			var req CreateUserRequest
-			if err := c.Bind(&req); err != nil {
+			if err := c.BindJSON(&req); err != nil {
 				log.Printf("Bind error: %v", err)
 				c.JSON(400, gin.H{"error": "Invalid form data"})
 				return
@@ -376,13 +370,18 @@ func InitServer() {
 
 			// Grant permissions to selected databases
 			for _, dbName := range req.Databases {
-				grantQuery := fmt.Sprintf("GRANT ALL PRIVILEGES ON DATABASE %s TO %s", dbName, req.Username)
+				// Grant both CONNECT and USAGE privileges
+				grantQuery := fmt.Sprintf(`GRANT ALL PRIVILEGES ON DATABASE "%s" TO "%s"`,
+					strings.Replace(dbName, `"`, `""`, -1),
+					strings.Replace(req.Username, `"`, `""`, -1),
+				)
 				if _, err = db.Exec(grantQuery); err != nil {
 					log.Printf("Error granting privileges on %s: %v", dbName, err)
+					continue
 				}
 			}
 
-			c.Redirect(302, "/")
+			c.JSON(200, gin.H{"message": "User created successfully"})
 		})
 
 		v1.DELETE("/users/:username", func(c *gin.Context) {
