@@ -41,12 +41,9 @@ type PageData struct {
 
 // Add this after the User struct
 type CreateUserRequest struct {
-	Username   string   `form:"username"`
-	Password   string   `form:"password"`
-	Databases  []string `form:"databases"`
-	Superuser  string   `form:"superuser"`
-	CreateDB   string   `form:"createdb"`
-	CreateRole string   `form:"createrole"`
+	Username  string   `form:"username"`
+	Password  string   `form:"password"`
+	Databases []string `form:"databases"`
 }
 
 // Add this struct after the existing ones
@@ -256,6 +253,7 @@ func InitServer() {
             SELECT datname 
             FROM pg_database 
             WHERE datistemplate = false 
+            AND datname != 'postgres'
             ORDER BY datname
         `)
 		if err != nil {
@@ -403,6 +401,7 @@ func InitServer() {
                 SELECT datname 
                 FROM pg_database 
                 WHERE datistemplate = false 
+                AND datname != 'postgres'
                 ORDER BY datname
             `)
 			if err != nil {
@@ -438,8 +437,8 @@ func InitServer() {
 
 			// Check postgres database access first
 			for _, dbName := range req.Databases {
-				if dbName == "postgres" && req.Superuser != "on" {
-					c.JSON(400, gin.H{"error": "Only superusers can access the postgres database"})
+				if dbName == "postgres" {
+					c.JSON(400, gin.H{"error": "Cannot grant access to postgres database"})
 					return
 				}
 			}
@@ -459,12 +458,9 @@ func InitServer() {
 
 			// Create user with proper parameter handling
 			createQuery := fmt.Sprintf(
-				"CREATE USER %s WITH PASSWORD '%s' %s %s %s",
+				"CREATE USER %s WITH PASSWORD '%s'",
 				req.Username,
 				req.Password,
-				map[string]string{"on": "SUPERUSER", "": "NOSUPERUSER"}[req.Superuser],
-				map[string]string{"on": "CREATEDB", "": "NOCREATEDB"}[req.CreateDB],
-				map[string]string{"on": "CREATEROLE", "": "NOCREATEROLE"}[req.CreateRole],
 			)
 
 			if _, err = db.Exec(createQuery); err != nil {
@@ -488,12 +484,6 @@ func InitServer() {
 
 			// Grant permissions to selected databases
 			for _, dbName := range req.Databases {
-				// Skip postgres database for non-superusers
-				if dbName == "postgres" && req.Superuser != "on" {
-					c.JSON(400, gin.H{"error": "Only superusers can access the postgres database"})
-					return
-				}
-
 				// First grant connect privilege
 				grantQuery := fmt.Sprintf(`GRANT CONNECT ON DATABASE "%s" TO "%s"`,
 					strings.Replace(dbName, `"`, `""`, -1),

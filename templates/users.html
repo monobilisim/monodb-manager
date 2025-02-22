@@ -44,79 +44,40 @@
             <form id="createUserForm">
                 <div class="space-y-6">
                     <div>
-                        <label for="username" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Username</label>
-                        <div class="mt-1 relative rounded-md shadow-sm">
-                            <input type="text" id="username" name="username" required
+                        <label for="username" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Username</label>
+                        <div class="relative rounded-md shadow-sm">
+                            <input type="text" name="username" id="username" required
                                 class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white 
-                                shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm
-                                placeholder-gray-400 dark:placeholder-gray-500
+                                shadow-sm focus:border-indigo-500 focus:ring-indigo-500 
                                 hover:border-gray-400 dark:hover:border-gray-500
-                                transition-colors duration-200
-                                px-4 py-3"
-                                placeholder="Enter username">
+                                px-4 py-2.5 text-sm transition-colors duration-200">
                         </div>
                     </div>
                     <div>
-                        <label for="password" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
-                        <div class="mt-1 relative rounded-md shadow-sm">
-                            <input type="password" id="password" name="password" required
+                        <label for="password" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
+                        <div class="relative rounded-md shadow-sm">
+                            <input type="password" name="password" id="password" required
                                 class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white 
-                                shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm
-                                placeholder-gray-400 dark:placeholder-gray-500
+                                shadow-sm focus:border-indigo-500 focus:ring-indigo-500 
                                 hover:border-gray-400 dark:hover:border-gray-500
-                                transition-colors duration-200
-                                px-4 py-3"
-                                placeholder="Enter password">
+                                px-4 py-2.5 text-sm transition-colors duration-200">
                         </div>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Databases</label>
-                        <button type="button" 
-                            onclick="toggleDatabaseModal()"
-                            class="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md 
-                            shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 
-                            hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 
-                            focus:ring-indigo-500 dark:focus:ring-offset-gray-800
-                            transition-colors duration-200">
-                            <span>Select Databases</span>
-                            <span id="selectedCount" class="ml-2 text-gray-500 dark:text-gray-400">0 selected</span>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Databases (<span id="selectedCount">0 selected</span>)
+                        </label>
+                        <button type="button" onclick="toggleDatabaseModal()"
+                            class="mt-1 inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800">
+                            Select Databases
                         </button>
                     </div>
-                    <div class="space-y-2">
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Permissions</label>
-                        <div class="space-x-4">
-                            <label class="inline-flex items-center">
-                                <input type="checkbox" name="superuser" 
-                                    class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 
-                                    focus:ring-indigo-500 dark:bg-gray-700
-                                    hover:border-indigo-400 dark:hover:border-indigo-500
-                                    transition-colors duration-200">
-                                <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Superuser</span>
-                            </label>
-                            <label class="inline-flex items-center">
-                                <input type="checkbox" name="createdb" 
-                                    class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 
-                                    focus:ring-indigo-500 dark:bg-gray-700
-                                    hover:border-indigo-400 dark:hover:border-indigo-500
-                                    transition-colors duration-200">
-                                <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Create DB</span>
-                            </label>
-                            <label class="inline-flex items-center">
-                                <input type="checkbox" name="createrole" 
-                                    class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 
-                                    focus:ring-indigo-500 dark:bg-gray-700
-                                    hover:border-indigo-400 dark:hover:border-indigo-500
-                                    transition-colors duration-200">
-                                <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">Create Role</span>
-                            </label>
-                        </div>
+                    <div>
+                        <button type="submit"
+                            class="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
+                            Create User
+                        </button>
                     </div>
-                </div>
-                <div class="mt-6">
-                    <button type="submit" 
-                        class="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
-                        Create User
-                    </button>
                 </div>
             </form>
         </div>
@@ -358,9 +319,6 @@
             const jsonData = {
                 username: formData.get('username'),
                 password: formData.get('password'),
-                superuser: formData.get('superuser'),
-                createdb: formData.get('createdb'),
-                createrole: formData.get('createrole'),
                 databases: Array.from(document.querySelectorAll('input[name="databases[]"]:checked')).map(cb => cb.value)
             };
 
@@ -389,21 +347,6 @@
                 form.addEventListener('submit', handleSubmit);
             }
         });
-
-        function updateDatabaseSelection() {
-            const isSuperuser = document.getElementById('superuser').checked;
-            const postgresDb = document.querySelector('input[value="postgres"]');
-            if (postgresDb) {
-                postgresDb.disabled = !isSuperuser;
-                if (!isSuperuser) {
-                    postgresDb.checked = false;
-                    updateSelectedCount();
-                }
-            }
-        }
-
-        document.getElementById('superuser').addEventListener('change', updateDatabaseSelection);
-        updateDatabaseSelection(); // Call on page load
     </script>
 </body>
 </html>
