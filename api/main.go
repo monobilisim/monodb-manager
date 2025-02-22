@@ -725,6 +725,14 @@ func InitServer() {
 		})
 	}
 
+	// Add this route after the existing routes
+	router.GET("/status", func(c *gin.Context) {
+		c.HTML(200, "status.html", PageData{
+			HAPorts:  haPorts,
+			Services: services,
+		})
+	})
+
 	// Start the server
 	log.Println("Starting server on :8080")
 	if err := router.Run(":8080"); err != nil {
