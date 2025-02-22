@@ -1,0 +1,22 @@
+ports:
+  - port: 5432
+    type: Primary
+    status: active
+  - port: 5433
+    type: Replica
+    status: active
+  - port: 5434
+    type: Backup
+    status: inactive
+
+services:
+  - name: PostgreSQL
+    nodes:
+      - url: "http://node1:5432/status"
+      - url: "http://node2:5432/status"
+      - url: "http://node3:5432/status"
+  - name: HAProxy
+    nodes:
+      - url: "http://node1:8404/status"
+      - url: "http://node2:8404/status"
+      - url: "http://node3:8404/status" 

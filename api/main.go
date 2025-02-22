@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
+	"gopkg.in/yaml.v3"
 )
 
 // Config holds database connection parameters
@@ -34,9 +35,28 @@ type User struct {
 	Databases  []string   // Add this field
 }
 
+// Add near the top with other structs
+type HAProxyPort struct {
+	Port   int    `yaml:"port"`
+	Type   string `yaml:"type"`
+	Status string `yaml:"status"`
+}
+
+// Add these new structs
+type ServiceNode struct {
+	URL string `yaml:"url"`
+}
+
+type Service struct {
+	Name  string        `yaml:"name"`
+	Nodes []ServiceNode `yaml:"nodes"`
+}
+
 type PageData struct {
 	Users     []User
 	Databases []string
+	HAPorts   []HAProxyPort
+	Services  []Service // Add this field
 }
 
 // Add this after the User struct
@@ -86,10 +106,31 @@ func getTemplatesDir(configuredPath string) string {
 	return filepath.Join(filepath.Dir(basepath), "templates", "*")
 }
 
+// Update the Config struct in loadHAProxyConfig
+func loadHAProxyConfig(configPath string) ([]HAProxyPort, []Service, error) {
+	type Config struct {
+		Ports    []HAProxyPort `yaml:"ports"`
+		Services []Service     `yaml:"services"`
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var config Config
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, nil, err
+	}
+
+	return config.Ports, config.Services, nil
+}
+
 func InitServer() {
 	// Define command line flags
 	config := Config{}
 	var templatesDir string
+	var haproxyConfig string
 
 	flag.StringVar(&config.Host, "host", "localhost", "PostgreSQL host")
 	flag.IntVar(&config.Port, "port", 5432, "PostgreSQL port")
@@ -98,6 +139,7 @@ func InitServer() {
 	flag.StringVar(&config.DBName, "dbname", "postgres", "PostgreSQL database name")
 	flag.StringVar(&config.SSLMode, "sslmode", "disable", "PostgreSQL SSL mode")
 	flag.StringVar(&templatesDir, "templates", "", "Path to templates directory")
+	flag.StringVar(&haproxyConfig, "config", "config/haproxy.yaml", "Path to config file")
 	flag.Parse()
 
 	log.Println("Initializing server...")
@@ -132,6 +174,14 @@ func InitServer() {
 	templatesPath := getTemplatesDir(templatesDir)
 	log.Printf("Loading templates from: %s", templatesPath)
 	router.LoadHTMLGlob(templatesPath)
+
+	// Load HAProxy config
+	haPorts, services, err := loadHAProxyConfig(haproxyConfig)
+	if err != nil {
+		log.Printf("Warning: Failed to load HAProxy config: %v", err)
+		haPorts = []HAProxyPort{} // Use empty list if config fails
+		services = []Service{}    // Use empty list if config fails
+	}
 
 	// Add a route for the root path to redirect to /users page
 	router.GET("/", func(c *gin.Context) {
@@ -276,6 +326,8 @@ func InitServer() {
 		c.HTML(200, "users.html", PageData{
 			Users:     users,
 			Databases: databases,
+			HAPorts:   haPorts,
+			Services:  services,
 		})
 	})
 
@@ -424,6 +476,8 @@ func InitServer() {
 			c.JSON(200, PageData{
 				Users:     users,
 				Databases: databases,
+				HAPorts:   haPorts,
+				Services:  services,
 			})
 		})
 
