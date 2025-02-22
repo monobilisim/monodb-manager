@@ -524,8 +524,6 @@ func InitServer() {
 
 				// Grant schema-level privileges
 				schemaQueries := []string{
-					fmt.Sprintf(`GRANT USAGE ON SCHEMA public TO "%s"`,
-						strings.Replace(req.Username, `"`, `""`, -1)),
 					fmt.Sprintf(`GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "%s"`,
 						strings.Replace(req.Username, `"`, `""`, -1)),
 					fmt.Sprintf(`GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO "%s"`,
