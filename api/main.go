@@ -173,22 +173,77 @@ func InitServer() {
 			}
 
 			// Get database access for this user
-			dbRows, err := db.Query(`
-                SELECT d.datname 
-                FROM pg_database d
-                WHERE d.datistemplate = false 
-                AND (
-                    SELECT has_database_privilege($1, d.datname, 'CONNECT')
-                    AND has_database_privilege($1, d.datname, 'CREATE')
-                )
-                ORDER BY datname
-            `, user.Username)
-			if err == nil {
-				defer dbRows.Close()
-				for dbRows.Next() {
-					var dbName string
-					if err := dbRows.Scan(&dbName); err == nil {
-						user.Databases = append(user.Databases, dbName)
+			if user.Superuser || user.Username == "postgres" {
+				// Superusers and postgres user have access to all databases
+				dbRows, err := db.Query(`
+                    SELECT datname 
+                    FROM pg_database 
+                    WHERE datistemplate = false 
+                    ORDER BY datname
+                `)
+				if err == nil {
+					defer dbRows.Close()
+					for dbRows.Next() {
+						var dbName string
+						if err := dbRows.Scan(&dbName); err == nil {
+							user.Databases = append(user.Databases, dbName)
+						}
+					}
+				}
+			} else {
+				// For regular users, check specific grants
+				dbRows, err := db.Query(`
+                    SELECT d.datname 
+                    FROM pg_database d
+                    WHERE d.datistemplate = false 
+                    AND has_database_privilege($1, d.datname, 'CONNECT')
+                    ORDER BY d.datname
+                `, user.Username)
+
+				if err == nil {
+					defer dbRows.Close()
+					var databases []string
+					for dbRows.Next() {
+						var dbName string
+						if err := dbRows.Scan(&dbName); err == nil {
+							databases = append(databases, dbName)
+						}
+					}
+
+					// Now check each database for actual privileges
+					for _, dbName := range databases {
+						func() {
+							dbConnStr := fmt.Sprintf(
+								"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+								config.Host,
+								config.Port,
+								config.User,
+								config.Password,
+								dbName,
+								config.SSLMode,
+							)
+
+							dbConn, err := sql.Open("postgres", dbConnStr)
+							if err != nil {
+								return
+							}
+							defer dbConn.Close()
+
+							// Check for actual table access
+							var hasAccess bool
+							err = dbConn.QueryRow(`
+                                SELECT EXISTS (
+                                    SELECT 1 
+                                    FROM information_schema.table_privileges 
+                                    WHERE grantee = $1 
+                                    AND table_schema = 'public'
+                                )
+                            `, user.Username).Scan(&hasAccess)
+
+							if err == nil && hasAccess {
+								user.Databases = append(user.Databases, dbName)
+							}
+						}()
 					}
 				}
 			}
@@ -265,22 +320,77 @@ func InitServer() {
 				}
 
 				// Get database access for this user
-				dbRows, err := db.Query(`
-                    SELECT d.datname 
-                    FROM pg_database d
-                    WHERE d.datistemplate = false 
-                    AND (
-                        SELECT has_database_privilege($1, d.datname, 'CONNECT')
-                        AND has_database_privilege($1, d.datname, 'CREATE')
-                    )
-                    ORDER BY datname
-                `, user.Username)
-				if err == nil {
-					defer dbRows.Close()
-					for dbRows.Next() {
-						var dbName string
-						if err := dbRows.Scan(&dbName); err == nil {
-							user.Databases = append(user.Databases, dbName)
+				if user.Superuser || user.Username == "postgres" {
+					// Superusers and postgres user have access to all databases
+					dbRows, err := db.Query(`
+                        SELECT datname 
+                        FROM pg_database 
+                        WHERE datistemplate = false 
+                        ORDER BY datname
+                    `)
+					if err == nil {
+						defer dbRows.Close()
+						for dbRows.Next() {
+							var dbName string
+							if err := dbRows.Scan(&dbName); err == nil {
+								user.Databases = append(user.Databases, dbName)
+							}
+						}
+					}
+				} else {
+					// For regular users, check specific grants
+					dbRows, err := db.Query(`
+                        SELECT d.datname 
+                        FROM pg_database d
+                        WHERE d.datistemplate = false 
+                        AND has_database_privilege($1, d.datname, 'CONNECT')
+                        ORDER BY d.datname
+                    `, user.Username)
+
+					if err == nil {
+						defer dbRows.Close()
+						var databases []string
+						for dbRows.Next() {
+							var dbName string
+							if err := dbRows.Scan(&dbName); err == nil {
+								databases = append(databases, dbName)
+							}
+						}
+
+						// Now check each database for actual privileges
+						for _, dbName := range databases {
+							func() {
+								dbConnStr := fmt.Sprintf(
+									"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+									config.Host,
+									config.Port,
+									config.User,
+									config.Password,
+									dbName,
+									config.SSLMode,
+								)
+
+								dbConn, err := sql.Open("postgres", dbConnStr)
+								if err != nil {
+									return
+								}
+								defer dbConn.Close()
+
+								// Check for actual table access
+								var hasAccess bool
+								err = dbConn.QueryRow(`
+                                    SELECT EXISTS (
+                                        SELECT 1 
+                                        FROM information_schema.table_privileges 
+                                        WHERE grantee = $1 
+                                        AND table_schema = 'public'
+                                    )
+                                `, user.Username).Scan(&hasAccess)
+
+								if err == nil && hasAccess {
+									user.Databases = append(user.Databases, dbName)
+								}
+							}()
 						}
 					}
 				}
@@ -324,6 +434,14 @@ func InitServer() {
 				log.Printf("Bind error: %v", err)
 				c.JSON(400, gin.H{"error": "Invalid form data"})
 				return
+			}
+
+			// Check postgres database access first
+			for _, dbName := range req.Databases {
+				if dbName == "postgres" && req.Superuser != "on" {
+					c.JSON(400, gin.H{"error": "Only superusers can access the postgres database"})
+					return
+				}
 			}
 
 			// First check if user exists
@@ -370,14 +488,59 @@ func InitServer() {
 
 			// Grant permissions to selected databases
 			for _, dbName := range req.Databases {
-				// Grant both CONNECT and USAGE privileges
-				grantQuery := fmt.Sprintf(`GRANT ALL PRIVILEGES ON DATABASE "%s" TO "%s"`,
+				// Skip postgres database for non-superusers
+				if dbName == "postgres" && req.Superuser != "on" {
+					c.JSON(400, gin.H{"error": "Only superusers can access the postgres database"})
+					return
+				}
+
+				// First grant connect privilege
+				grantQuery := fmt.Sprintf(`GRANT CONNECT ON DATABASE "%s" TO "%s"`,
 					strings.Replace(dbName, `"`, `""`, -1),
 					strings.Replace(req.Username, `"`, `""`, -1),
 				)
 				if _, err = db.Exec(grantQuery); err != nil {
-					log.Printf("Error granting privileges on %s: %v", dbName, err)
+					log.Printf("Error granting CONNECT on %s: %v", dbName, err)
 					continue
+				}
+
+				// Connect to the database to grant schema-level privileges
+				dbConnStr := fmt.Sprintf(
+					"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+					config.Host,
+					config.Port,
+					config.User,
+					config.Password,
+					dbName,
+					config.SSLMode,
+				)
+
+				dbConn, err := sql.Open("postgres", dbConnStr)
+				if err != nil {
+					log.Printf("Error connecting to database %s: %v", dbName, err)
+					continue
+				}
+				defer dbConn.Close()
+
+				// Grant schema-level privileges
+				schemaQueries := []string{
+					fmt.Sprintf(`GRANT USAGE ON SCHEMA public TO "%s"`,
+						strings.Replace(req.Username, `"`, `""`, -1)),
+					fmt.Sprintf(`GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "%s"`,
+						strings.Replace(req.Username, `"`, `""`, -1)),
+					fmt.Sprintf(`GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO "%s"`,
+						strings.Replace(req.Username, `"`, `""`, -1)),
+					fmt.Sprintf(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO "%s"`,
+						strings.Replace(req.Username, `"`, `""`, -1)),
+					fmt.Sprintf(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON SEQUENCES TO "%s"`,
+						strings.Replace(req.Username, `"`, `""`, -1)),
+				}
+
+				for _, query := range schemaQueries {
+					if _, err = dbConn.Exec(query); err != nil {
+						log.Printf("Error executing schema grant query on %s: %v", dbName, err)
+						// Continue with other queries even if one fails
+					}
 				}
 			}
 
@@ -393,7 +556,7 @@ func InitServer() {
 				return
 			}
 
-			// First revoke all privileges from all databases
+			// First get all databases
 			rows, err := db.Query(`
 				SELECT datname 
 				FROM pg_database 
@@ -404,15 +567,47 @@ func InitServer() {
 				for rows.Next() {
 					var dbName string
 					if err := rows.Scan(&dbName); err == nil {
-						revokeQuery := fmt.Sprintf("REVOKE ALL PRIVILEGES ON DATABASE %s FROM %s", dbName, username)
-						db.Exec(revokeQuery) // Ignore errors as user might not have access to all DBs
+						// Connect to each database to revoke schema-level privileges
+						dbConnStr := fmt.Sprintf(
+							"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+							config.Host,
+							config.Port,
+							config.User,
+							config.Password,
+							dbName,
+							config.SSLMode,
+						)
+
+						dbConn, err := sql.Open("postgres", dbConnStr)
+						if err != nil {
+							log.Printf("Error connecting to database %s: %v", dbName, err)
+							continue
+						}
+						defer dbConn.Close()
+
+						// Revoke all privileges and reassign owned objects
+						revokeQueries := []string{
+							fmt.Sprintf(`REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM "%s"`, username),
+							fmt.Sprintf(`REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM "%s"`, username),
+							fmt.Sprintf(`REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM "%s"`, username),
+							fmt.Sprintf(`REVOKE ALL PRIVILEGES ON DATABASE "%s" FROM "%s"`, dbName, username),
+							fmt.Sprintf(`REASSIGN OWNED BY "%s" TO postgres`, username),
+							fmt.Sprintf(`DROP OWNED BY "%s"`, username),
+						}
+
+						for _, query := range revokeQueries {
+							if _, err := dbConn.Exec(query); err != nil {
+								log.Printf("Error executing revoke query on %s: %v", dbName, err)
+								// Continue with other queries even if one fails
+							}
+						}
 					}
 				}
 			}
 
-			// Drop the user
-			query := fmt.Sprintf("DROP USER IF EXISTS %s", username)
-			_, err = db.Exec(query)
+			// Finally drop the user
+			dropQuery := fmt.Sprintf(`DROP USER IF EXISTS "%s"`, username)
+			_, err = db.Exec(dropQuery)
 			if err != nil {
 				log.Printf("Error deleting user %s: %v", username, err)
 				c.JSON(500, gin.H{"error": "Failed to delete user"})
