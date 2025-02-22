@@ -19,4 +19,6 @@ services:
     nodes:
       - url: "http://node1:8404/status"
       - url: "http://node2:8404/status"
-      - url: "http://node3:8404/status" 
+      - url: "http://node3:8404/status"
+
+pmm_url: "https://pmm.example.com/graph/d/postgresql-instance-summary/postgresql-instance-summary" 

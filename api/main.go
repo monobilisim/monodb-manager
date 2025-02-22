@@ -56,7 +56,8 @@ type PageData struct {
 	Users     []User
 	Databases []string
 	HAPorts   []HAProxyPort
-	Services  []Service // Add this field
+	Services  []Service
+	PMMURL    string
 }
 
 // Add this after the User struct
@@ -107,23 +108,24 @@ func getTemplatesDir(configuredPath string) string {
 }
 
 // Update the Config struct in loadHAProxyConfig
-func loadHAProxyConfig(configPath string) ([]HAProxyPort, []Service, error) {
+func loadHAProxyConfig(configPath string) ([]HAProxyPort, []Service, string, error) {
 	type Config struct {
 		Ports    []HAProxyPort `yaml:"ports"`
 		Services []Service     `yaml:"services"`
+		PMMURL   string        `yaml:"pmm_url"`
 	}
 
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
 
 	var config Config
 	if err := yaml.Unmarshal(data, &config); err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
 
-	return config.Ports, config.Services, nil
+	return config.Ports, config.Services, config.PMMURL, nil
 }
 
 func InitServer() {
@@ -176,11 +178,12 @@ func InitServer() {
 	router.LoadHTMLGlob(templatesPath)
 
 	// Load HAProxy config
-	haPorts, services, err := loadHAProxyConfig(haproxyConfig)
+	haPorts, services, pmmURL, err := loadHAProxyConfig(haproxyConfig)
 	if err != nil {
-		log.Printf("Warning: Failed to load HAProxy config: %v", err)
-		haPorts = []HAProxyPort{} // Use empty list if config fails
-		services = []Service{}    // Use empty list if config fails
+		log.Printf("Warning: Failed to load config: %v", err)
+		haPorts = []HAProxyPort{}
+		services = []Service{}
+		pmmURL = ""
 	}
 
 	// Add a route for the root path to redirect to /users page
@@ -328,6 +331,7 @@ func InitServer() {
 			Databases: databases,
 			HAPorts:   haPorts,
 			Services:  services,
+			PMMURL:    pmmURL,
 		})
 	})
 
@@ -478,6 +482,7 @@ func InitServer() {
 				Databases: databases,
 				HAPorts:   haPorts,
 				Services:  services,
+				PMMURL:    pmmURL,
 			})
 		})
 
@@ -730,6 +735,7 @@ func InitServer() {
 		c.HTML(200, "status.html", PageData{
 			HAPorts:  haPorts,
 			Services: services,
+			PMMURL:   pmmURL,
 		})
 	})
 
