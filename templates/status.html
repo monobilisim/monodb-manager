@@ -49,11 +49,9 @@
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{{.Port}}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{{.Type}}</td>
                         <td class="px-6 py-4 whitespace-nowrap">
-                            <a href="http://localhost:{{.Port}}/status" target="_blank" rel="noopener">
-                                <img src="https://uptime.yepas.srv.biz.tr/api/badge/9/status?style=for-the-badge" 
-                                    alt="Status Badge" 
-                                    class="h-6 hover:opacity-80 transition-opacity duration-200">
-                            </a>
+                            <img src="https://uptime.yepas.srv.biz.tr/api/badge/9/status?style=for-the-badge" 
+                                alt="Status Badge" 
+                                class="h-6">
                         </td>
                     </tr>
                     {{end}}
@@ -80,11 +78,9 @@
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{{.Name}}</td>
                         {{range .Nodes}}
                         <td class="px-6 py-4 whitespace-nowrap">
-                            <a href="{{.URL}}" target="_blank" rel="noopener">
-                                <img src="{{.URL}}" 
-                                    alt="Status Badge" 
-                                    class="h-6 hover:opacity-80 transition-opacity duration-200">
-                            </a>
+                            <img src="{{.URL}}" 
+                                alt="Status Badge" 
+                                class="h-6">
                         </td>
                         {{end}}
                     </tr>
