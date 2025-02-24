@@ -190,7 +190,7 @@ func InitServer() {
 	router.GET("/", func(c *gin.Context) {
 		// First get all users
 		rows, err := db.Query(`
-            SELECT 
+            SELECT
                 usename,
                 usesuper,
                 usecreatedb,
@@ -226,9 +226,9 @@ func InitServer() {
 			if user.Superuser || user.Username == "postgres" {
 				// Superusers and postgres user have access to all databases
 				dbRows, err := db.Query(`
-                    SELECT datname 
-                    FROM pg_database 
-                    WHERE datistemplate = false 
+                    SELECT datname
+                    FROM pg_database
+                    WHERE datistemplate = false
                     ORDER BY datname
                 `)
 				if err == nil {
@@ -243,9 +243,9 @@ func InitServer() {
 			} else {
 				// For regular users, check specific grants
 				dbRows, err := db.Query(`
-                    SELECT d.datname 
+                    SELECT d.datname
                     FROM pg_database d
-                    WHERE d.datistemplate = false 
+                    WHERE d.datistemplate = false
                     AND has_database_privilege($1, d.datname, 'CONNECT')
                     ORDER BY d.datname
                 `, user.Username)
@@ -283,9 +283,9 @@ func InitServer() {
 							var hasAccess bool
 							err = dbConn.QueryRow(`
                                 SELECT EXISTS (
-                                    SELECT 1 
-                                    FROM information_schema.table_privileges 
-                                    WHERE grantee = $1 
+                                    SELECT 1
+                                    FROM information_schema.table_privileges
+                                    WHERE grantee = $1
                                     AND table_schema = 'public'
                                 )
                             `, user.Username).Scan(&hasAccess)
@@ -303,9 +303,9 @@ func InitServer() {
 
 		// Get all databases for the create form
 		dbRows, err := db.Query(`
-            SELECT datname 
-            FROM pg_database 
-            WHERE datistemplate = false 
+            SELECT datname
+            FROM pg_database
+            WHERE datistemplate = false
             AND datname != 'postgres'
             ORDER BY datname
         `)
@@ -341,7 +341,7 @@ func InitServer() {
 		v1.GET("/users", func(c *gin.Context) {
 			// First get all users
 			rows, err := db.Query(`
-                SELECT 
+                SELECT
                     usename,
                     usesuper,
                     usecreatedb,
@@ -377,9 +377,9 @@ func InitServer() {
 				if user.Superuser || user.Username == "postgres" {
 					// Superusers and postgres user have access to all databases
 					dbRows, err := db.Query(`
-                        SELECT datname 
-                        FROM pg_database 
-                        WHERE datistemplate = false 
+                        SELECT datname
+                        FROM pg_database
+                        WHERE datistemplate = false
                         ORDER BY datname
                     `)
 					if err == nil {
@@ -394,9 +394,9 @@ func InitServer() {
 				} else {
 					// For regular users, check specific grants
 					dbRows, err := db.Query(`
-                        SELECT d.datname 
+                        SELECT d.datname
                         FROM pg_database d
-                        WHERE d.datistemplate = false 
+                        WHERE d.datistemplate = false
                         AND has_database_privilege($1, d.datname, 'CONNECT')
                         ORDER BY d.datname
                     `, user.Username)
@@ -434,9 +434,9 @@ func InitServer() {
 								var hasAccess bool
 								err = dbConn.QueryRow(`
                                     SELECT EXISTS (
-                                        SELECT 1 
-                                        FROM information_schema.table_privileges 
-                                        WHERE grantee = $1 
+                                        SELECT 1
+                                        FROM information_schema.table_privileges
+                                        WHERE grantee = $1
                                         AND table_schema = 'public'
                                     )
                                 `, user.Username).Scan(&hasAccess)
@@ -454,9 +454,9 @@ func InitServer() {
 
 			// Get all databases for the create form
 			dbRows, err := db.Query(`
-                SELECT datname 
-                FROM pg_database 
-                WHERE datistemplate = false 
+                SELECT datname
+                FROM pg_database
+                WHERE datistemplate = false
                 AND datname != 'postgres'
                 ORDER BY datname
             `)
@@ -605,8 +605,8 @@ func InitServer() {
 
 			// First get all databases
 			rows, err := db.Query(`
-				SELECT datname 
-				FROM pg_database 
+				SELECT datname
+				FROM pg_database
 				WHERE datistemplate = false
 			`)
 			if err == nil {
@@ -667,14 +667,14 @@ func InitServer() {
 		// Add this route in the router setup after the existing routes
 		router.GET("/query", func(c *gin.Context) {
 			rows, err := db.Query(`
-				SELECT 
+				SELECT
 					pid,
 					usename,
 					datname,
 					EXTRACT(EPOCH FROM now() - query_start)::text || 's' as duration,
 					query
-				FROM pg_stat_activity 
-				WHERE state != 'idle' 
+				FROM pg_stat_activity
+				WHERE state != 'idle'
 				AND pid != pg_backend_pid()
 				ORDER BY query_start DESC
 			`)
