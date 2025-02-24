@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"text/template"
+
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
 	"gopkg.in/yaml.v3"
@@ -128,6 +130,17 @@ func loadHAProxyConfig(configPath string) ([]HAProxyPort, []Service, string, err
 	return config.Ports, config.Services, config.PMMURL, nil
 }
 
+// Update this function before InitServer
+func replaceBadgeWithDashboard(url string) string {
+	// First replace api/badge with dashboard
+	url = strings.Replace(url, "/api/badge/", "/dashboard/", 1)
+	// Then remove everything after ? if it exists
+	if idx := strings.Index(url, "?"); idx != -1 {
+		url = url[:idx]
+	}
+	return url
+}
+
 func InitServer() {
 	// Define command line flags
 	config := Config{}
@@ -174,7 +187,12 @@ func InitServer() {
 
 	router := gin.Default()
 
-	// Load HTML templates
+	// Set the function map first
+	router.SetFuncMap(template.FuncMap{
+		"replaceBadgeWithDashboard": replaceBadgeWithDashboard,
+	})
+
+	// Then load the templates
 	templatesPath := getTemplatesDir(templatesDir)
 	log.Printf("Loading templates from: %s", templatesPath)
 	router.LoadHTMLGlob(templatesPath)
