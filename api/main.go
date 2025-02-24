@@ -133,6 +133,7 @@ func InitServer() {
 	config := Config{}
 	var templatesDir string
 	var haproxyConfig string
+	var serverPort string
 
 	flag.StringVar(&config.Host, "host", "localhost", "PostgreSQL host")
 	flag.IntVar(&config.Port, "port", 5432, "PostgreSQL port")
@@ -142,6 +143,7 @@ func InitServer() {
 	flag.StringVar(&config.SSLMode, "sslmode", "disable", "PostgreSQL SSL mode")
 	flag.StringVar(&templatesDir, "templates", "", "Path to templates directory")
 	flag.StringVar(&haproxyConfig, "config", "config/haproxy.yaml", "Path to config file")
+	flag.StringVar(&serverPort, "server-port", "8080", "Server port to listen on")
 	flag.Parse()
 
 	log.Println("Initializing server...")
@@ -740,8 +742,8 @@ func InitServer() {
 	})
 
 	// Start the server
-	log.Println("Starting server on :8080")
-	if err := router.Run(":8080"); err != nil {
+	log.Printf("Starting server on :%s", serverPort)
+	if err := router.Run(":" + serverPort); err != nil {
 		log.Fatal("Failed to start server:", err)
 	}
 }
