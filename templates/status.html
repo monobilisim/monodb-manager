@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="refresh" content="30">
     <title>PostgreSQL Status</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
@@ -22,16 +21,43 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                     </svg>
                 </button>
+                <button id="refreshBtn" onclick="refreshComponents()" class="rounded-lg p-2.5 hover:bg-gray-200 dark:hover:bg-gray-700">
+                    <!-- Refresh icon -->
+                    <svg class="w-6 h-6 text-gray-800 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                </button>
                 <a href="/" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
                     Users
                 </a>
                 <a href="/query" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
                     Active Queries
                 </a>
+                <a href="/query-analytics" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
+                    Query Analytics
+                </a>
+                <div class="px-4 py-2.5 rounded-md bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 font-medium">
+                    Status
+                </div>
             </div>
         </div>
 
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+        {{if .PMMURL}}
+        <div id="pmmContainer" class="mb-8 bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Cluster Status</h2>
+            </div>
+            <div class="w-full h-[340px]">
+                <iframe 
+                    src="{{.PMMURL}}" 
+                    class="w-full h-full border-0"
+                    allow="fullscreen">
+                </iframe>
+            </div>
+        </div>
+        {{end}}
+
+        <div id="haproxyPortsContainer" class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
             <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
                 <h2 class="text-xl font-semibold text-gray-900 dark:text-white">HAProxy PGSQL Connection Ports</h2>
             </div>
@@ -43,7 +69,7 @@
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
                     </tr>
                 </thead>
-                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                <tbody id="haproxyPortsTable" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                     {{range .HAPorts}}
                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{{.Port}}</td>
@@ -61,7 +87,7 @@
             </table>
         </div>
 
-        <div class="mt-8 bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+        <div id="servicesContainer" class="mt-8 bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
             <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
                 <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Service Status</h2>
             </div>
@@ -74,7 +100,7 @@
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Node 3</th>
                     </tr>
                 </thead>
-                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                <tbody id="servicesTable" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                     {{range .Services}}
                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{{.Name}}</td>
@@ -92,21 +118,6 @@
                 </tbody>
             </table>
         </div>
-
-        {{if .PMMURL}}
-        <div class="mt-8 bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                <h2 class="text-xl font-semibold text-gray-900 dark:text-white">PMM</h2>
-            </div>
-            <div class="w-full h-[600px]">
-                <iframe 
-                    src="{{.PMMURL}}" 
-                    class="w-full h-full border-0"
-                    allow="fullscreen">
-                </iframe>
-            </div>
-        </div>
-        {{end}}
     </div>
 
     <script>
@@ -122,6 +133,183 @@
             const isDark = document.documentElement.classList.toggle('dark');
             localStorage.setItem('darkMode', isDark);
         }
+
+        // Function to replace badge URL with dashboard URL
+        function replaceBadgeWithDashboard(url) {
+            // First replace api/badge with dashboard
+            url = url.replace('/api/badge/', '/dashboard/');
+            
+            // Remove '/status' from the end if present
+            url = url.replace(/\/status(?=\?|$)/, '');
+            
+            // Then remove everything after ? if it exists
+            if (url.indexOf('?') !== -1) {
+                url = url.substring(0, url.indexOf('?'));
+            }
+            
+            return url;
+        }
+
+        // Function to create HAProxy port table row
+        function createHAPortRow(port) {
+            return `
+                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${port.port}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${port.type}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <a href="${replaceBadgeWithDashboard(port.status)}" target="_blank" rel="noopener">
+                            <img src="${port.status}" 
+                                alt="Status Badge" 
+                                class="h-6 hover:opacity-80 transition-opacity duration-200">
+                        </a>
+                    </td>
+                </tr>
+            `;
+        }
+
+        // Function to create service table row
+        function createServiceRow(service) {
+            let nodesCells = '';
+            for (const node of service.nodes) {
+                nodesCells += `
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <a href="${replaceBadgeWithDashboard(node.url)}" target="_blank" rel="noopener">
+                            <img src="${node.url}" 
+                                alt="Status Badge" 
+                                class="h-6 hover:opacity-80 transition-opacity duration-200">
+                        </a>
+                    </td>
+                `;
+            }
+
+            return `
+                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${service.name}</td>
+                    ${nodesCells}
+                </tr>
+            `;
+        }
+
+        // Function to refresh components
+        function refreshComponents() {
+            const refreshBtn = document.getElementById('refreshBtn');
+            // Show loading state
+            refreshBtn.classList.add('animate-spin');
+            
+            fetch('/api/v1/users')
+                .then(response => response.json())
+                .then(data => {
+                    // Update HAProxy ports table
+                    const haPortsTable = document.getElementById('haproxyPortsTable');
+                    if (haPortsTable && data.HAPorts) {
+                        let portRows = '';
+                        for (const port of data.HAPorts) {
+                            portRows += createHAPortRow(port);
+                        }
+                        haPortsTable.innerHTML = portRows;
+                    }
+
+                    // Update Services table
+                    const servicesTable = document.getElementById('servicesTable');
+                    if (servicesTable && data.Services) {
+                        let serviceRows = '';
+                        for (const service of data.Services) {
+                            serviceRows += createServiceRow(service);
+                        }
+                        servicesTable.innerHTML = serviceRows;
+                    }
+
+                    // Update PMM iframe if it exists
+                    if (data.PMMURL) {
+                        const pmmContainer = document.getElementById('pmmContainer');
+                        if (pmmContainer) {
+                            const iframe = pmmContainer.querySelector('iframe');
+                            if (iframe) {
+                                iframe.src = data.PMMURL;
+                            }
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error refreshing components:', error);
+                })
+                .finally(() => {
+                    // Remove loading state
+                    refreshBtn.classList.remove('animate-spin');
+                });
+        }
+
+        // Function to refresh only status badge images
+        function refreshStatusBadges() {
+            // Get all badge images
+            const badgeImages = document.querySelectorAll('img[src*="badge"]');
+            
+            // Add a timestamp to force reload without browser caching
+            badgeImages.forEach(img => {
+                const originalSrc = img.getAttribute('data-original-src');
+                if (!originalSrc) {
+                    // Store the original source on first run
+                    img.setAttribute('data-original-src', img.src);
+                    
+                    // Set the timestamped URL for subsequent refreshes
+                    updateBadgeUrl(img);
+                } else {
+                    // Update the image URL with new timestamp
+                    updateBadgeUrl(img);
+                }
+            });
+        }
+        
+        // Helper function to update badge URL with timestamp
+        function updateBadgeUrl(imgElement) {
+            const originalSrc = imgElement.getAttribute('data-original-src');
+            if (originalSrc) {
+                // Parse URL to handle existing query parameters
+                let url = new URL(originalSrc, window.location.origin);
+                
+                // Add style parameter
+                url.searchParams.set('style', 'for-the-badge');
+                
+                // Add timestamp to prevent caching
+                url.searchParams.set('t', Date.now());
+                
+                // Update image source
+                imgElement.src = url.toString();
+                
+                // Also update the link URL if it points to a dashboard
+                const parentLink = imgElement.closest('a');
+                if (parentLink) {
+                    const dashboardUrl = replaceBadgeWithDashboard(originalSrc);
+                    parentLink.href = dashboardUrl;
+                }
+            }
+        }
+
+        // Function to apply badge style to initial images
+        function applyBadgeStyle() {
+            document.querySelectorAll('img[src*="badge"]').forEach(img => {
+                // Save original URL
+                const originalSrc = img.src;
+                img.setAttribute('data-original-src', originalSrc);
+                
+                // Apply style to initial display
+                let url = new URL(originalSrc, window.location.origin);
+                url.searchParams.set('style', 'for-the-badge');
+                img.src = url.toString();
+            });
+        }
+
+        // Set up component refresh interval
+        let autoRefreshInterval = setInterval(refreshComponents, 30000);
+        
+        // Set up status badge refresh interval (every 5 seconds)
+        let badgeRefreshInterval = setInterval(refreshStatusBadges, 5000);
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            // Apply badge style and store original URLs
+            applyBadgeStyle();
+        });
     </script>
 </body>
 </html> 

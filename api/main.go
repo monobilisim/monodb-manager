@@ -20,12 +20,26 @@ import (
 
 // Config holds database connection parameters
 type Config struct {
-	Host     string
-	Port     int
-	User     string
-	Password string
-	DBName   string
-	SSLMode  string
+	Host      string
+	Port      int
+	User      string
+	Password  string
+	DBName    string
+	SSLMode   string
+	Databases []string `yaml:"databases"`
+	LogFile   string   `yaml:"log_file"`
+
+	// PMM iframe URL for the status page
+	PMMIframeURL string `yaml:"pmm_iframe"`
+
+	// Query Analytics iframe URL
+	QueryIframeURL string `yaml:"query_iframe"`
+
+	// HAProxy port badges
+	HAProxyPorts map[string]HAProxyPort `yaml:"haproxy_ports"`
+
+	// Service node badges
+	ServiceNodes map[string]ServiceNode `yaml:"service_nodes"`
 }
 
 type User struct {
@@ -110,24 +124,25 @@ func getTemplatesDir(configuredPath string) string {
 }
 
 // Update the Config struct in loadHAProxyConfig
-func loadHAProxyConfig(configPath string) ([]HAProxyPort, []Service, string, error) {
+func loadHAProxyConfig(configPath string) ([]HAProxyPort, []Service, string, string, error) {
 	type Config struct {
-		Ports    []HAProxyPort `yaml:"ports"`
-		Services []Service     `yaml:"services"`
-		PMMURL   string        `yaml:"pmm_url"`
+		Ports          []HAProxyPort `yaml:"ports"`
+		Services       []Service     `yaml:"services"`
+		PMMURL         string        `yaml:"pmm_url"`
+		QueryIframeURL string        `yaml:"query_iframe"`
 	}
 
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", "", err
 	}
 
 	var config Config
 	if err := yaml.Unmarshal(data, &config); err != nil {
-		return nil, nil, "", err
+		return nil, nil, "", "", err
 	}
 
-	return config.Ports, config.Services, config.PMMURL, nil
+	return config.Ports, config.Services, config.PMMURL, config.QueryIframeURL, nil
 }
 
 // Update this function before InitServer
@@ -198,13 +213,18 @@ func InitServer() {
 	router.LoadHTMLGlob(templatesPath)
 
 	// Load HAProxy config
-	haPorts, services, pmmURL, err := loadHAProxyConfig(haproxyConfig)
+	haPorts, services, pmmURL, queryIframeURL, err := loadHAProxyConfig(haproxyConfig)
 	if err != nil {
 		log.Printf("Warning: Failed to load config: %v", err)
 		haPorts = []HAProxyPort{}
 		services = []Service{}
 		pmmURL = ""
+		queryIframeURL = ""
 	}
+
+	// Set the QueryIframeURL in the config struct
+	config.QueryIframeURL = queryIframeURL
+	config.PMMIframeURL = pmmURL
 
 	// Add a route for the root path to redirect to /users page
 	router.GET("/", func(c *gin.Context) {
@@ -684,8 +704,8 @@ func InitServer() {
 			c.JSON(200, gin.H{"message": "User deleted successfully"})
 		})
 
-		// Add this route in the router setup after the existing routes
-		router.GET("/query", func(c *gin.Context) {
+		// Add a new endpoint for queries in JSON format
+		v1.GET("/queries", func(c *gin.Context) {
 			rows, err := db.Query(`
 				SELECT
 					pid,
@@ -694,7 +714,8 @@ func InitServer() {
 					EXTRACT(EPOCH FROM now() - query_start)::text || 's' as duration,
 					query
 				FROM pg_stat_activity
-				WHERE state != 'idle'
+				WHERE state = 'active'
+				AND query NOT ILIKE '%pg_stat_activity%'
 				AND pid != pg_backend_pid()
 				ORDER BY query_start DESC
 			`)
@@ -716,9 +737,7 @@ func InitServer() {
 				queries = append(queries, q)
 			}
 
-			c.HTML(200, "query.html", gin.H{
-				"Queries": queries,
-			})
+			c.JSON(200, gin.H{"queries": queries})
 		})
 
 		// Add this endpoint to the API group
@@ -756,6 +775,51 @@ func InitServer() {
 			HAPorts:  haPorts,
 			Services: services,
 			PMMURL:   pmmURL,
+		})
+	})
+
+	// Add the query route handler for the query page
+	router.GET("/query", func(c *gin.Context) {
+		rows, err := db.Query(`
+			SELECT
+				pid,
+				usename,
+				datname,
+				EXTRACT(EPOCH FROM now() - query_start)::text || 's' as duration,
+				query
+			FROM pg_stat_activity
+			WHERE state = 'active'
+			AND query NOT ILIKE '%pg_stat_activity%'
+			AND pid != pg_backend_pid()
+			ORDER BY query_start DESC
+		`)
+		if err != nil {
+			log.Printf("Error querying active queries: %v", err)
+			c.JSON(500, gin.H{"error": "Failed to fetch queries"})
+			return
+		}
+		defer rows.Close()
+
+		var queries []Query
+		for rows.Next() {
+			var q Query
+			err := rows.Scan(&q.PID, &q.Username, &q.Database, &q.Duration, &q.Query)
+			if err != nil {
+				log.Printf("Error scanning query row: %v", err)
+				continue
+			}
+			queries = append(queries, q)
+		}
+
+		c.HTML(200, "query.html", gin.H{
+			"Queries": queries,
+		})
+	})
+
+	// Add route handler for query analytics page
+	router.GET("/query-analytics", func(c *gin.Context) {
+		c.HTML(200, "query_analytics.html", gin.H{
+			"QueryIframeURL": config.QueryIframeURL,
 		})
 	})
 

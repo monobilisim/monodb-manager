@@ -4,13 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PostgreSQL Active Queries</title>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="h-full bg-gray-50 dark:bg-gray-900">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div class="flex justify-between items-center mb-8">
             <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Active Queries</h1>
             <div class="flex items-center space-x-6">
-                <button onclick="refreshPage()" class="rounded-lg p-2.5 hover:bg-gray-200 dark:hover:bg-gray-700">
+                <button id="refreshBtn" onclick="refreshQueries()" class="rounded-lg p-2.5 hover:bg-gray-200 dark:hover:bg-gray-700">
                     <!-- Refresh icon -->
                     <svg class="w-6 h-6 text-gray-800 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -28,6 +29,12 @@
                 </button>
                 <a href="/" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
                     Users
+                </a>
+                <div class="px-4 py-2.5 rounded-md bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 font-medium">
+                    Active Queries
+                </div>
+                <a href="/query-analytics" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
+                    Query Analytics
                 </a>
                 <a href="/status" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
                     Status
@@ -47,9 +54,9 @@
                         <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                     </tr>
                 </thead>
-                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                <tbody id="queriesTable" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                     {{range .Queries}}
-                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700" data-pid="{{.PID}}">
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{{.PID}}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{{.Username}}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{{.Database}}</td>
@@ -70,7 +77,7 @@
         </div>
     </div>
 
-    <!-- Add this modal before the closing body tag -->
+    <!-- Kill query confirmation modal -->
     <div id="killModal" class="hidden fixed inset-0 bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75 flex items-center justify-center">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4">
             <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
@@ -96,8 +103,6 @@
         </div>
     </div>
 
-    <!-- Move all scripts to just before closing body tag -->
-    <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
             darkMode: 'class'
@@ -111,13 +116,105 @@
             localStorage.setItem('darkMode', isDark);
         }
 
-        function refreshPage() {
-            clearInterval(autoRefreshInterval);
-            setTimeout(() => {
-                window.location.reload();
-            }, 100);
+        // Create table row HTML from query data
+        function createQueryRow(query) {
+            return `
+                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700" data-pid="${query.pid}">
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${query.pid}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${query.username}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${query.database}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${query.duration}</td>
+                    <td class="px-6 py-4 text-sm text-gray-900 dark:text-white">
+                        <div class="max-w-xl overflow-hidden text-ellipsis">${query.query}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm">
+                        <button onclick="killQuery('${query.pid}')" 
+                            class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 font-medium">
+                            Kill
+                        </button>
+                    </td>
+                </tr>
+            `;
         }
 
+        // Function to refresh queries using AJAX
+        function refreshQueries() {
+            const refreshBtn = document.getElementById('refreshBtn');
+            // Show loading state
+            refreshBtn.classList.add('animate-spin');
+            
+            // Get current PIDs before refresh to track which queries have completed
+            const currentPids = Array.from(document.querySelectorAll('tr[data-pid]')).map(row => 
+                row.getAttribute('data-pid')
+            );
+            
+            fetch('/api/v1/queries')
+                .then(response => response.json())
+                .then(data => {
+                    const queriesTable = document.getElementById('queriesTable');
+                    if (queriesTable) {
+                        const newQueries = data.queries || [];
+                        // Get list of PIDs in the new data
+                        const newPids = newQueries.map(query => query.pid.toString());
+                        
+                        // Find PIDs that are no longer present (queries that completed)
+                        const completedPids = currentPids.filter(pid => !newPids.includes(pid));
+                        
+                        // Mark completed queries visually even if we're going to replace them
+                        completedPids.forEach(pid => {
+                            const row = document.querySelector(`tr[data-pid="${pid}"]`);
+                            if (row) {
+                                row.classList.add('bg-green-50', 'dark:bg-green-900');
+                                row.classList.add('line-through');
+                                row.style.opacity = '0.5';
+                                
+                                // Add a "Completed" label to make it super clear
+                                const statusCell = document.createElement('span');
+                                statusCell.className = 'ml-2 px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800 dark:bg-green-700 dark:text-green-100';
+                                statusCell.textContent = 'Completed';
+                                
+                                const actionCell = row.querySelector('td:last-child');
+                                if (actionCell) {
+                                    // Replace kill button with completed status
+                                    actionCell.innerHTML = '';
+                                    actionCell.appendChild(statusCell);
+                                }
+                            }
+                        });
+                        
+                        // Short delay to let the user see the completion status before updating
+                        setTimeout(() => {
+                            // Always update with the latest data
+                            let tableContent = '';
+                            for (const query of newQueries) {
+                                tableContent += createQueryRow(query);
+                            }
+                            
+                            if (tableContent.trim() === '') {
+                                // No active queries, show a message
+                                tableContent = `
+                                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                                        <td colspan="6" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                                            <p class="text-lg">No active queries</p>
+                                            <p class="text-sm mt-2">Any queries running in the database will appear here</p>
+                                        </td>
+                                    </tr>
+                                `;
+                            }
+                            
+                            queriesTable.innerHTML = tableContent;
+                        }, completedPids.length > 0 ? 1000 : 0); // Delay only if we have completed queries to show
+                    }
+                })
+                .catch(error => {
+                    console.error('Error refreshing queries:', error);
+                })
+                .finally(() => {
+                    // Remove loading state
+                    refreshBtn.classList.remove('animate-spin');
+                });
+        }
+        
         function showKillModal(pid) {
             clearInterval(autoRefreshInterval);
             document.getElementById('killPid').textContent = pid;
@@ -129,11 +226,19 @@
 
         function hideKillModal() {
             document.getElementById('killModal').classList.add('hidden');
-            autoRefreshInterval = setInterval(refreshPage, 5000);
+            startAutoRefresh();
         }
 
         function executeKill(pid) {
             hideKillModal();
+            
+            // Show loading indicator
+            const refreshBtn = document.getElementById('refreshBtn');
+            refreshBtn.classList.add('animate-spin');
+            
+            // Disable any kill buttons to prevent double-kills
+            const killButtons = document.querySelectorAll('button[onclick^="killQuery"]');
+            killButtons.forEach(btn => btn.disabled = true);
             
             fetch(`/api/v1/queries/${pid}`, {
                 method: 'DELETE',
@@ -143,10 +248,37 @@
                         throw new Error(data.error || 'Failed to kill query');
                     });
                 }
-                refreshPage();
+                
+                // Give the server a brief moment to complete the kill operation
+                setTimeout(() => {
+                    // Remove the row immediately for better UX
+                    const row = document.querySelector(`tr[data-pid="${pid}"]`);
+                    if (row) {
+                        row.classList.add('bg-red-50', 'dark:bg-red-900', 'opacity-50');
+                        
+                        // Fade out animation
+                        setTimeout(() => {
+                            row.style.transition = 'opacity 0.5s ease-out';
+                            row.style.opacity = '0';
+                            
+                            // Then remove it
+                            setTimeout(() => {
+                                row.remove();
+                            }, 500);
+                        }, 100);
+                    }
+                    
+                    // Also refresh all queries to ensure accuracy
+                    refreshQueries();
+                }, 300);
+                
             }).catch(error => {
                 alert(error.message);
-                refreshPage();
+                refreshQueries();
+            }).finally(() => {
+                refreshBtn.classList.remove('animate-spin');
+                // Re-enable kill buttons
+                killButtons.forEach(btn => btn.disabled = false);
             });
         }
 
@@ -154,7 +286,20 @@
             showKillModal(pid);
         }
 
-        let autoRefreshInterval = setInterval(refreshPage, 5000);
+        function startAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+            }
+            // More frequent refresh (every 2 seconds) to catch completed queries faster
+            autoRefreshInterval = setInterval(refreshQueries, 2000);
+        }
+
+        let autoRefreshInterval;
+        
+        // Initialize auto-refresh when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            startAutoRefresh();
+        });
     </script>
 </body>
 </html> 
