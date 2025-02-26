@@ -21,29 +21,17 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                     </svg>
                 </button>
-                <div class="px-4 py-2.5 rounded-md bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 font-medium">
-                    Users
-                </div>
-                <a href="/query" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
-                    Active Queries
+                <a href="/status" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
+                    Status
                 </a>
                 <a href="/query-analytics" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
                     Query Analytics
                 </a>
-                <a href="/status" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
-                    Status
+                <a href="/query" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
+                    Active Queries
                 </a>
-                <div class="relative">
-                    <select id="dbFilter" onchange="filterUsers()" 
-                        class="block w-48 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white 
-                        shadow-sm focus:border-indigo-500 focus:ring-indigo-500 
-                        hover:border-gray-400 dark:hover:border-gray-500
-                        px-4 py-2.5 text-sm">
-                        <option value="">All Databases</option>
-                        {{range .Databases}}
-                        <option value="{{.}}">{{.}}</option>
-                        {{end}}
-                    </select>
+                <div class="px-4 py-2.5 rounded-md bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 font-medium">
+                    Users
                 </div>
             </div>
         </div>
@@ -92,6 +80,22 @@
         </div>
         
         <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                <h2 class="text-xl font-semibold text-gray-900 dark:text-white">User List</h2>
+                <div class="relative">
+                    <label for="dbFilter" class="sr-only">Filter by database</label>
+                    <select id="dbFilter" onchange="filterUsers()" 
+                        class="block w-48 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white 
+                        shadow-sm focus:border-indigo-500 focus:ring-indigo-500 
+                        hover:border-gray-400 dark:hover:border-gray-500
+                        px-4 py-2.5 text-sm">
+                        <option value="">All Databases</option>
+                        {{range .Databases}}
+                        <option value="{{.}}">{{.}}</option>
+                        {{end}}
+                    </select>
+                </div>
+            </div>
             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                 <thead class="bg-gray-50 dark:bg-gray-700">
                     <tr>

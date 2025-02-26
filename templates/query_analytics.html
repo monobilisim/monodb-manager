@@ -21,32 +21,52 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                     </svg>
                 </button>
-                <a href="/" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
-                    Users
-                </a>
-                <a href="/query" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
-                    Active Queries
+                <a href="/status" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
+                    Status
                 </a>
                 <div class="px-4 py-2.5 rounded-md bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 font-medium">
                     Query Analytics
                 </div>
-                <a href="/status" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
-                    Status
+                <a href="/query" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
+                    Active Queries
+                </a>
+                <a href="/" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
+                    Users
                 </a>
             </div>
         </div>
 
         {{if .QueryIframeURL}}
         <div id="queryAnalyticsContainer" class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
                 <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Query Performance Analysis</h2>
+                <div class="flex items-center space-x-2">
+                    <button onclick="adjustIframeHeight('queryAnalyticsIframe', 150)" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+                    <button onclick="adjustIframeHeight('queryAnalyticsIframe', -150)" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+                        </svg>
+                    </button>
+                    <button onclick="toggleFullscreen('queryAnalyticsIframe')" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" />
+                        </svg>
+                    </button>
+                </div>
             </div>
-            <div class="w-full h-[700px]">
+            <div class="w-full iframe-container">
                 <iframe 
+                    id="queryAnalyticsIframe"
                     src="{{.QueryIframeURL}}" 
-                    class="w-full h-full border-0"
+                    class="w-full border-0 resize-y"
+                    style="min-height: 700px; height: 700px;"
                     allow="fullscreen">
                 </iframe>
+                <div class="resize-handle" onmousedown="initResize('queryAnalyticsIframe', event)"></div>
             </div>
         </div>
         {{else}}
@@ -73,6 +93,100 @@
             const isDark = document.documentElement.classList.toggle('dark');
             localStorage.setItem('darkMode', isDark);
         }
+        
+        // Function to adjust iframe height by the specified amount
+        function adjustIframeHeight(iframeId, change) {
+            const iframe = document.getElementById(iframeId);
+            if (iframe) {
+                const currentHeight = parseInt(iframe.style.height);
+                const newHeight = Math.max(200, currentHeight + change); // Minimum height of 200px
+                iframe.style.height = newHeight + 'px';
+            }
+        }
+        
+        // Function to toggle fullscreen for an iframe
+        function toggleFullscreen(iframeId) {
+            const iframe = document.getElementById(iframeId);
+            if (iframe) {
+                if (!document.fullscreenElement) {
+                    if (iframe.requestFullscreen) {
+                        iframe.requestFullscreen();
+                    } else if (iframe.webkitRequestFullscreen) { /* Safari */
+                        iframe.webkitRequestFullscreen();
+                    } else if (iframe.msRequestFullscreen) { /* IE11 */
+                        iframe.msRequestFullscreen();
+                    }
+                } else {
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen();
+                    } else if (document.webkitExitFullscreen) { /* Safari */
+                        document.webkitExitFullscreen();
+                    } else if (document.msExitFullscreen) { /* IE11 */
+                        document.msExitFullscreen();
+                    }
+                }
+            }
+        }
+        
+        // Initial iframe resize event setup
+        let resizeTarget = null;
+        let initialY = 0;
+        let initialHeight = 0;
+        
+        // Function to initialize resize
+        function initResize(iframeId, event) {
+            resizeTarget = document.getElementById(iframeId);
+            if (resizeTarget) {
+                initialY = event.clientY;
+                initialHeight = parseInt(resizeTarget.style.height);
+                
+                // Add event listeners for resize
+                document.addEventListener('mousemove', doResize);
+                document.addEventListener('mouseup', stopResize);
+            }
+            event.preventDefault();
+        }
+        
+        // Function to perform resize
+        function doResize(event) {
+            if (resizeTarget) {
+                const dy = event.clientY - initialY;
+                const newHeight = Math.max(200, initialHeight + dy);
+                resizeTarget.style.height = newHeight + 'px';
+            }
+        }
+        
+        // Function to stop resize
+        function stopResize() {
+            resizeTarget = null;
+            document.removeEventListener('mousemove', doResize);
+            document.removeEventListener('mouseup', stopResize);
+        }
     </script>
+    
+    <style>
+        /* Add this to the end of your file or in head */
+        .iframe-container {
+            position: relative;
+        }
+        
+        .resize-handle {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 6px;
+            background-color: transparent;
+            cursor: ns-resize;
+        }
+        
+        .resize-handle:hover {
+            background-color: rgba(0, 0, 0, 0.1);
+        }
+        
+        .resize-y {
+            resize: vertical;
+        }
+    </style>
 </body>
 </html> 

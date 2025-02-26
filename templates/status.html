@@ -27,32 +27,52 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
                 </button>
-                <a href="/" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
-                    Users
+                <div class="px-4 py-2.5 rounded-md bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 font-medium">
+                    Status
+                </div>
+                <a href="/query-analytics" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
+                    Query Analytics
                 </a>
                 <a href="/query" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
                     Active Queries
                 </a>
-                <a href="/query-analytics" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
-                    Query Analytics
+                <a href="/" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
+                    Users
                 </a>
-                <div class="px-4 py-2.5 rounded-md bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 font-medium">
-                    Status
-                </div>
             </div>
         </div>
 
         {{if .PMMURL}}
         <div id="pmmContainer" class="mb-8 bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
                 <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Cluster Status</h2>
+                <div class="flex items-center space-x-2">
+                    <button onclick="adjustIframeHeight('pmmIframe', 150)" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+                    <button onclick="adjustIframeHeight('pmmIframe', -150)" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+                        </svg>
+                    </button>
+                    <button onclick="toggleFullscreen('pmmIframe')" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" />
+                        </svg>
+                    </button>
+                </div>
             </div>
-            <div class="w-full h-[340px]">
+            <div class="w-full iframe-container">
                 <iframe 
+                    id="pmmIframe"
                     src="{{.PMMURL}}" 
-                    class="w-full h-full border-0"
+                    class="w-full border-0 resize-y"
+                    style="min-height: 340px; height: 340px;"
                     allow="fullscreen">
                 </iframe>
+                <div class="resize-handle" onmousedown="initResize('pmmIframe', event)"></div>
             </div>
         </div>
         {{end}}
@@ -310,6 +330,100 @@
             // Apply badge style and store original URLs
             applyBadgeStyle();
         });
+
+        // Function to adjust iframe height by the specified amount
+        function adjustIframeHeight(iframeId, change) {
+            const iframe = document.getElementById(iframeId);
+            if (iframe) {
+                const currentHeight = parseInt(iframe.style.height);
+                const newHeight = Math.max(200, currentHeight + change); // Minimum height of 200px
+                iframe.style.height = newHeight + 'px';
+            }
+        }
+        
+        // Function to toggle fullscreen for an iframe
+        function toggleFullscreen(iframeId) {
+            const iframe = document.getElementById(iframeId);
+            if (iframe) {
+                if (!document.fullscreenElement) {
+                    if (iframe.requestFullscreen) {
+                        iframe.requestFullscreen();
+                    } else if (iframe.webkitRequestFullscreen) { /* Safari */
+                        iframe.webkitRequestFullscreen();
+                    } else if (iframe.msRequestFullscreen) { /* IE11 */
+                        iframe.msRequestFullscreen();
+                    }
+                } else {
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen();
+                    } else if (document.webkitExitFullscreen) { /* Safari */
+                        document.webkitExitFullscreen();
+                    } else if (document.msExitFullscreen) { /* IE11 */
+                        document.msExitFullscreen();
+                    }
+                }
+            }
+        }
+        
+        // Initial iframe resize event setup
+        let resizeTarget = null;
+        let initialY = 0;
+        let initialHeight = 0;
+        
+        // Function to initialize resize
+        function initResize(iframeId, event) {
+            resizeTarget = document.getElementById(iframeId);
+            if (resizeTarget) {
+                initialY = event.clientY;
+                initialHeight = parseInt(resizeTarget.style.height);
+                
+                // Add event listeners for resize
+                document.addEventListener('mousemove', doResize);
+                document.addEventListener('mouseup', stopResize);
+            }
+            event.preventDefault();
+        }
+        
+        // Function to perform resize
+        function doResize(event) {
+            if (resizeTarget) {
+                const dy = event.clientY - initialY;
+                const newHeight = Math.max(200, initialHeight + dy);
+                resizeTarget.style.height = newHeight + 'px';
+            }
+        }
+        
+        // Function to stop resize
+        function stopResize() {
+            resizeTarget = null;
+            document.removeEventListener('mousemove', doResize);
+            document.removeEventListener('mouseup', stopResize);
+        }
     </script>
+
+    <style>
+        /* Add this to the end of your file or in head */
+        .iframe-container {
+            position: relative;
+        }
+        
+        .resize-handle {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 6px;
+            background-color: transparent;
+            cursor: ns-resize;
+        }
+        
+        .resize-handle:hover {
+            background-color: rgba(0, 0, 0, 0.1);
+        }
+        
+        .resize-y {
+            resize: vertical;
+        }
+    </style>
 </body>
 </html> 
