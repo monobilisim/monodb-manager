@@ -40,6 +40,10 @@ type Config struct {
 
 	// Service node badges
 	ServiceNodes map[string]ServiceNode `yaml:"service_nodes"`
+
+	// Refresh intervals (in seconds)
+	ComponentRefreshInterval int `yaml:"component_refresh_interval"`
+	BadgeRefreshInterval     int `yaml:"badge_refresh_interval"`
 }
 
 type User struct {
@@ -69,11 +73,13 @@ type Service struct {
 }
 
 type PageData struct {
-	Users     []User
-	Databases []string
-	HAPorts   []HAProxyPort
-	Services  []Service
-	PMMURL    string
+	Users                    []User
+	Databases                []string
+	HAPorts                  []HAProxyPort
+	Services                 []Service
+	PMMURL                   string
+	ComponentRefreshInterval int
+	BadgeRefreshInterval     int
 }
 
 // Add this after the User struct
@@ -124,25 +130,27 @@ func getTemplatesDir(configuredPath string) string {
 }
 
 // Update the Config struct in loadHAProxyConfig
-func loadHAProxyConfig(configPath string) ([]HAProxyPort, []Service, string, string, error) {
+func loadHAProxyConfig(configPath string) ([]HAProxyPort, []Service, string, int, int, string, error) {
 	type Config struct {
-		Ports          []HAProxyPort `yaml:"ports"`
-		Services       []Service     `yaml:"services"`
-		PMMURL         string        `yaml:"pmm_url"`
-		QueryIframeURL string        `yaml:"query_iframe"`
+		Ports                    []HAProxyPort `yaml:"ports"`
+		Services                 []Service     `yaml:"services"`
+		PMMURL                   string        `yaml:"pmm_url"`
+		ComponentRefreshInterval int           `yaml:"component_refresh_interval"`
+		BadgeRefreshInterval     int           `yaml:"badge_refresh_interval"`
+		QueryIframeURL           string        `yaml:"query_iframe"`
 	}
 
 	data, err := os.ReadFile(configPath)
 	if err != nil {
-		return nil, nil, "", "", err
+		return nil, nil, "", 0, 0, "", err
 	}
 
 	var config Config
 	if err := yaml.Unmarshal(data, &config); err != nil {
-		return nil, nil, "", "", err
+		return nil, nil, "", 0, 0, "", err
 	}
 
-	return config.Ports, config.Services, config.PMMURL, config.QueryIframeURL, nil
+	return config.Ports, config.Services, config.PMMURL, config.ComponentRefreshInterval, config.BadgeRefreshInterval, config.QueryIframeURL, nil
 }
 
 // Update this function before InitServer
@@ -213,21 +221,33 @@ func InitServer() {
 	router.LoadHTMLGlob(templatesPath)
 
 	// Load HAProxy config
-	haPorts, services, pmmURL, queryIframeURL, err := loadHAProxyConfig(haproxyConfig)
+	haPorts, services, pmmURL, componentRefreshInterval, badgeRefreshInterval, queryIframeURL, err := loadHAProxyConfig(haproxyConfig)
 	if err != nil {
 		log.Printf("Warning: Failed to load config: %v", err)
 		haPorts = []HAProxyPort{}
 		services = []Service{}
 		pmmURL = ""
 		queryIframeURL = ""
+		componentRefreshInterval = 30000
+		badgeRefreshInterval = 3000
 	}
 
 	// Set the QueryIframeURL in the config struct
 	config.QueryIframeURL = queryIframeURL
 	config.PMMIframeURL = pmmURL
 
-	// Add a route for the root path to redirect to /users page
+	// Add this route after the existing routes
 	router.GET("/", func(c *gin.Context) {
+		c.HTML(200, "status.html", PageData{
+			HAPorts:                  haPorts,
+			Services:                 services,
+			PMMURL:                   pmmURL,
+			ComponentRefreshInterval: componentRefreshInterval,
+			BadgeRefreshInterval:     badgeRefreshInterval,
+		})
+	})
+
+	router.GET("/users", func(c *gin.Context) {
 		// First get all users
 		rows, err := db.Query(`
             SELECT
@@ -768,15 +788,6 @@ func InitServer() {
 			c.JSON(200, gin.H{"message": "Query killed successfully"})
 		})
 	}
-
-	// Add this route after the existing routes
-	router.GET("/status", func(c *gin.Context) {
-		c.HTML(200, "status.html", PageData{
-			HAPorts:  haPorts,
-			Services: services,
-			PMMURL:   pmmURL,
-		})
-	})
 
 	// Add the query route handler for the query page
 	router.GET("/query", func(c *gin.Context) {

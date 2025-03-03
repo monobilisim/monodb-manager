@@ -156,6 +156,7 @@
 
         // Function to replace badge URL with dashboard URL
         function replaceBadgeWithDashboard(url) {
+            
             // First replace api/badge with dashboard
             url = url.replace('/api/badge/', '/dashboard/');
             
@@ -172,13 +173,14 @@
 
         // Function to create HAProxy port table row
         function createHAPortRow(port) {
+            const statusUrl = port.status || '#';
             return `
                 <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${port.port}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${port.type}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${port.port || ''}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${port.type || ''}</td>
                     <td class="px-6 py-4 whitespace-nowrap">
-                        <a href="${replaceBadgeWithDashboard(port.status)}" target="_blank" rel="noopener">
-                            <img src="${port.status}" 
+                        <a href="${replaceBadgeWithDashboard(statusUrl)}" target="_blank" rel="noopener">
+                            <img src="${statusUrl}" 
                                 alt="Status Badge" 
                                 class="h-6 hover:opacity-80 transition-opacity duration-200">
                         </a>
@@ -190,21 +192,39 @@
         // Function to create service table row
         function createServiceRow(service) {
             let nodesCells = '';
-            for (const node of service.nodes) {
-                nodesCells += `
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <a href="${replaceBadgeWithDashboard(node.url)}" target="_blank" rel="noopener">
-                            <img src="${node.url}" 
-                                alt="Status Badge" 
-                                class="h-6 hover:opacity-80 transition-opacity duration-200">
-                        </a>
-                    </td>
+            // Check if service.nodes exists and is iterable
+            if (service.nodes && Array.isArray(service.nodes)) {
+                for (const node of service.nodes) {
+                    nodesCells += `
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <a href="${replaceBadgeWithDashboard(node.url)}" target="_blank" rel="noopener">
+                                <img src="${node.url}" 
+                                    alt="Status Badge" 
+                                    class="h-6 hover:opacity-80 transition-opacity duration-200">
+                            </a>
+                        </td>
+                    `;
+                }
+                
+                // Fill in any remaining cells if there are fewer than 3 nodes
+                const remainingCells = 3 - service.nodes.length;
+                for (let i = 0; i < remainingCells; i++) {
+                    nodesCells += `
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">N/A</td>
+                    `;
+                }
+            } else {
+                // Add empty cells if nodes are not available
+                nodesCells = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">N/A</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">N/A</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">N/A</td>
                 `;
             }
 
             return `
                 <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${service.name}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${service.name || 'Unknown Service'}</td>
                     ${nodesCells}
                 </tr>
             `;
@@ -221,22 +241,34 @@
                 .then(data => {
                     // Update HAProxy ports table
                     const haPortsTable = document.getElementById('haproxyPortsTable');
-                    if (haPortsTable && data.HAPorts) {
+                    if (haPortsTable && Array.isArray(data.HAPorts)) {
                         let portRows = '';
                         for (const port of data.HAPorts) {
-                            portRows += createHAPortRow(port);
+                            if (port && typeof port === 'object') {
+                                portRows += createHAPortRow(port);
+                            }
                         }
-                        haPortsTable.innerHTML = portRows;
+                        if (portRows) {
+                            haPortsTable.innerHTML = portRows;
+                            // Re-apply badge styles to new images
+                            applyBadgeStyle();
+                        }
                     }
 
                     // Update Services table
                     const servicesTable = document.getElementById('servicesTable');
-                    if (servicesTable && data.Services) {
+                    if (servicesTable && Array.isArray(data.Services)) {
                         let serviceRows = '';
                         for (const service of data.Services) {
-                            serviceRows += createServiceRow(service);
+                            if (service && typeof service === 'object') {
+                                serviceRows += createServiceRow(service);
+                            }
                         }
-                        servicesTable.innerHTML = serviceRows;
+                        if (serviceRows) {
+                            servicesTable.innerHTML = serviceRows;
+                            // Re-apply badge styles to new images
+                            applyBadgeStyle();
+                        }
                     }
 
                     // Update PMM iframe if it exists
@@ -284,8 +316,9 @@
         function updateBadgeUrl(imgElement) {
             const originalSrc = imgElement.getAttribute('data-original-src');
             if (originalSrc) {
-                // Parse URL to handle existing query parameters
-                let url = new URL(originalSrc, window.location.origin);
+                // Preserve the original URL structure
+                const baseUrl = originalSrc.split('?')[0];
+                let url = new URL(baseUrl, window.location.origin);
                 
                 // Add style parameter
                 url.searchParams.set('style', 'for-the-badge');
@@ -299,7 +332,7 @@
                 // Also update the link URL if it points to a dashboard
                 const parentLink = imgElement.closest('a');
                 if (parentLink) {
-                    const dashboardUrl = replaceBadgeWithDashboard(originalSrc);
+                    const dashboardUrl = replaceBadgeWithDashboard(baseUrl);
                     parentLink.href = dashboardUrl;
                 }
             }
@@ -320,11 +353,11 @@
         }
 
         // Set up component refresh interval
-        let autoRefreshInterval = setInterval(refreshComponents, 30000);
+        let autoRefreshInterval = setInterval(refreshComponents, "{{if .ComponentRefreshInterval }}{{.ComponentRefreshInterval}}000{{else}}30000{{end}}");
         
-        // Set up status badge refresh interval (every 5 seconds)
-        let badgeRefreshInterval = setInterval(refreshStatusBadges, 5000);
-
+        // Set up status badge refresh interval
+        let badgeRefreshInterval = setInterval(refreshStatusBadges, "{{if .BadgeRefreshInterval }}{{.BadgeRefreshInterval}}000{{else}}3000{{end}}");
+                
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', () => {
             // Apply badge style and store original URLs
@@ -426,4 +459,4 @@
         }
     </style>
 </body>
-</html> 
+</html>

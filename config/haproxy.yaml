@@ -1,3 +1,7 @@
+# Refresh intervals in seconds
+component_refresh_interval: 30
+badge_refresh_interval: 3
+
 ports:
   - port: 5432
     type: Primary
@@ -21,4 +25,4 @@ services:
       - url: "http://node2:8404/status"
       - url: "http://node3:8404/status"
 
-pmm_url: "https://pmm.example.com/graph/d/postgresql-instance-summary/postgresql-instance-summary" 
+pmm_url: "https://pmm.example.com/graph/d/postgresql-instance-summary/postgresql-instance-summary"
