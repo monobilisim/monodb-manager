@@ -21,7 +21,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                     </svg>
                 </button>
-                <button id="refreshBtn" onclick="refreshComponents()" class="rounded-lg p-2.5 hover:bg-gray-200 dark:hover:bg-gray-700">
+                <button id="refreshBtn" onclick="refreshStatusBadges()" class="rounded-lg p-2.5 hover:bg-gray-200 dark:hover:bg-gray-700">
                     <!-- Refresh icon -->
                     <svg class="w-6 h-6 text-gray-800 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -229,68 +229,7 @@
                 </tr>
             `;
         }
-
-        // Function to refresh components
-        function refreshComponents() {
-            const refreshBtn = document.getElementById('refreshBtn');
-            // Show loading state
-            refreshBtn.classList.add('animate-spin');
-            
-            fetch('/api/v1/users')
-                .then(response => response.json())
-                .then(data => {
-                    // Update HAProxy ports table
-                    const haPortsTable = document.getElementById('haproxyPortsTable');
-                    if (haPortsTable && Array.isArray(data.HAPorts)) {
-                        let portRows = '';
-                        for (const port of data.HAPorts) {
-                            if (port && typeof port === 'object') {
-                                portRows += createHAPortRow(port);
-                            }
-                        }
-                        if (portRows) {
-                            haPortsTable.innerHTML = portRows;
-                            // Re-apply badge styles to new images
-                            applyBadgeStyle();
-                        }
-                    }
-
-                    // Update Services table
-                    const servicesTable = document.getElementById('servicesTable');
-                    if (servicesTable && Array.isArray(data.Services)) {
-                        let serviceRows = '';
-                        for (const service of data.Services) {
-                            if (service && typeof service === 'object') {
-                                serviceRows += createServiceRow(service);
-                            }
-                        }
-                        if (serviceRows) {
-                            servicesTable.innerHTML = serviceRows;
-                            // Re-apply badge styles to new images
-                            applyBadgeStyle();
-                        }
-                    }
-
-                    // Update PMM iframe if it exists
-                    if (data.PMMURL) {
-                        const pmmContainer = document.getElementById('pmmContainer');
-                        if (pmmContainer) {
-                            const iframe = pmmContainer.querySelector('iframe');
-                            if (iframe) {
-                                iframe.src = data.PMMURL;
-                            }
-                        }
-                    }
-                })
-                .catch(error => {
-                    console.error('Error refreshing components:', error);
-                })
-                .finally(() => {
-                    // Remove loading state
-                    refreshBtn.classList.remove('animate-spin');
-                });
-        }
-
+        
         // Function to refresh only status badge images
         function refreshStatusBadges() {
             // Get all badge images
@@ -299,9 +238,11 @@
             // Add a timestamp to force reload without browser caching
             badgeImages.forEach(img => {
                 const originalSrc = img.getAttribute('data-original-src');
+
                 if (!originalSrc) {
                     // Store the original source on first run
                     img.setAttribute('data-original-src', img.src);
+
                     
                     // Set the timestamped URL for subsequent refreshes
                     updateBadgeUrl(img);
@@ -322,9 +263,6 @@
                 
                 // Add style parameter
                 url.searchParams.set('style', 'for-the-badge');
-                
-                // Add timestamp to prevent caching
-                url.searchParams.set('t', Date.now());
                 
                 // Update image source
                 imgElement.src = url.toString();
@@ -351,9 +289,6 @@
                 img.src = url.toString();
             });
         }
-
-        // Set up component refresh interval
-        let autoRefreshInterval = setInterval(refreshComponents, "{{if .ComponentRefreshInterval }}{{.ComponentRefreshInterval}}000{{else}}30000{{end}}");
         
         // Set up status badge refresh interval
         let badgeRefreshInterval = setInterval(refreshStatusBadges, "{{if .BadgeRefreshInterval }}{{.BadgeRefreshInterval}}000{{else}}3000{{end}}");
