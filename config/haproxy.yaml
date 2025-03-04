@@ -1,5 +1,4 @@
 # Refresh intervals in seconds
-component_refresh_interval: 30
 badge_refresh_interval: 3
 
 ports:
