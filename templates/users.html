@@ -347,7 +347,7 @@
                 if (!response.ok) {
                     throw new Error(data.error || 'Failed to create user');
                 }
-                window.location.href = '/';
+                window.location.href = '/users';
             }).catch(error => {
                 showError(error.message);
             });
