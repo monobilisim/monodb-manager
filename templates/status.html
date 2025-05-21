@@ -21,7 +21,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                     </svg>
                 </button>
-                <button id="refreshBtn" onclick="refreshStatusBadges()" class="rounded-lg p-2.5 hover:bg-gray-200 dark:hover:bg-gray-700">
+                <button id="refreshBtn" onclick="refreshComponents()" class="rounded-lg p-2.5 hover:bg-gray-200 dark:hover:bg-gray-700">
                     <!-- Refresh icon -->
                     <svg class="w-6 h-6 text-gray-800 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -36,7 +36,7 @@
                 <a href="/query" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
                     Active Queries
                 </a>
-                <a href="/" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
+                <a href="/users" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
                     Users
                 </a>
             </div>
@@ -65,9 +65,9 @@
                 </div>
             </div>
             <div class="w-full iframe-container">
-                <iframe 
+                <iframe
                     id="pmmIframe"
-                    src="{{.PMMURL}}" 
+                    src="{{.PMMURL}}"
                     class="w-full border-0 resize-y"
                     style="min-height: 340px; height: 340px;"
                     allow="fullscreen">
@@ -96,8 +96,8 @@
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{{.Type}}</td>
                         <td class="px-6 py-4 whitespace-nowrap">
                             <a href="{{.Status | replaceBadgeWithDashboard}}" target="_blank" rel="noopener">
-                                <img src="{{.Status}}" 
-                                    alt="Status Badge" 
+                                <img src="{{.Status}}"
+                                    alt="Status Badge"
                                     class="h-6 hover:opacity-80 transition-opacity duration-200">
                             </a>
                         </td>
@@ -127,8 +127,8 @@
                         {{range .Nodes}}
                         <td class="px-6 py-4 whitespace-nowrap">
                             <a href="{{.URL | replaceBadgeWithDashboard}}" target="_blank" rel="noopener">
-                                <img src="{{.URL}}" 
-                                    alt="Status Badge" 
+                                <img src="{{.URL}}"
+                                    alt="Status Badge"
                                     class="h-6 hover:opacity-80 transition-opacity duration-200">
                             </a>
                         </td>
@@ -156,18 +156,18 @@
 
         // Function to replace badge URL with dashboard URL
         function replaceBadgeWithDashboard(url) {
-            
+
             // First replace api/badge with dashboard
             url = url.replace('/api/badge/', '/dashboard/');
-            
+
             // Remove '/status' from the end if present
-            url = url.replace(/status, '');
-            
+            url = url.replace(/\/status(?=\?|$)/, '');
+
             // Then remove everything after ? if it exists
             if (url.indexOf('?') !== -1) {
                 url = url.substring(0, url.indexOf('?'));
             }
-            
+
             return url;
         }
 
@@ -180,8 +180,8 @@
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${port.type || ''}</td>
                     <td class="px-6 py-4 whitespace-nowrap">
                         <a href="${replaceBadgeWithDashboard(statusUrl)}" target="_blank" rel="noopener">
-                            <img src="${statusUrl}" 
-                                alt="Status Badge" 
+                            <img src="${statusUrl}"
+                                alt="Status Badge"
                                 class="h-6 hover:opacity-80 transition-opacity duration-200">
                         </a>
                     </td>
@@ -198,14 +198,14 @@
                     nodesCells += `
                         <td class="px-6 py-4 whitespace-nowrap">
                             <a href="${replaceBadgeWithDashboard(node.url)}" target="_blank" rel="noopener">
-                                <img src="${node.url}" 
-                                    alt="Status Badge" 
+                                <img src="${node.url}"
+                                    alt="Status Badge"
                                     class="h-6 hover:opacity-80 transition-opacity duration-200">
                             </a>
                         </td>
                     `;
                 }
-                
+
                 // Fill in any remaining cells if there are fewer than 3 nodes
                 const remainingCells = 3 - service.nodes.length;
                 for (let i = 0; i < remainingCells; i++) {
@@ -229,21 +229,80 @@
                 </tr>
             `;
         }
-        
+
+        // Function to refresh components
+        function refreshComponents() {
+            const refreshBtn = document.getElementById('refreshBtn');
+            // Show loading state
+            refreshBtn.classList.add('animate-spin');
+
+            fetch('/api/v1/users')
+                .then(response => response.json())
+                .then(data => {
+                    // Update HAProxy ports table
+                    const haPortsTable = document.getElementById('haproxyPortsTable');
+                    if (haPortsTable && Array.isArray(data.HAPorts)) {
+                        let portRows = '';
+                        for (const port of data.HAPorts) {
+                            if (port && typeof port === 'object') {
+                                portRows += createHAPortRow(port);
+                            }
+                        }
+                        if (portRows) {
+                            haPortsTable.innerHTML = portRows;
+                            // Re-apply badge styles to new images
+                            applyBadgeStyle();
+                        }
+                    }
+
+                    // Update Services table
+                    const servicesTable = document.getElementById('servicesTable');
+                    if (servicesTable && Array.isArray(data.Services)) {
+                        let serviceRows = '';
+                        for (const service of data.Services) {
+                            if (service && typeof service === 'object') {
+                                serviceRows += createServiceRow(service);
+                            }
+                        }
+                        if (serviceRows) {
+                            servicesTable.innerHTML = serviceRows;
+                            // Re-apply badge styles to new images
+                            applyBadgeStyle();
+                        }
+                    }
+
+                    // Update PMM iframe if it exists
+                    if (data.PMMURL) {
+                        const pmmContainer = document.getElementById('pmmContainer');
+                        if (pmmContainer) {
+                            const iframe = pmmContainer.querySelector('iframe');
+                            if (iframe) {
+                                iframe.src = data.PMMURL;
+                            }
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error refreshing components:', error);
+                })
+                .finally(() => {
+                    // Remove loading state
+                    refreshBtn.classList.remove('animate-spin');
+                });
+        }
+
         // Function to refresh only status badge images
         function refreshStatusBadges() {
             // Get all badge images
             const badgeImages = document.querySelectorAll('img[src*="badge"]');
-            
+
             // Add a timestamp to force reload without browser caching
             badgeImages.forEach(img => {
                 const originalSrc = img.getAttribute('data-original-src');
-
                 if (!originalSrc) {
                     // Store the original source on first run
                     img.setAttribute('data-original-src', img.src);
 
-                    
                     // Set the timestamped URL for subsequent refreshes
                     updateBadgeUrl(img);
                 } else {
@@ -252,7 +311,7 @@
                 }
             });
         }
-        
+
         // Helper function to update badge URL with timestamp
         function updateBadgeUrl(imgElement) {
             const originalSrc = imgElement.getAttribute('data-original-src');
@@ -260,13 +319,16 @@
                 // Preserve the original URL structure
                 const baseUrl = originalSrc.split('?')[0];
                 let url = new URL(baseUrl, window.location.origin);
-                
+
                 // Add style parameter
                 url.searchParams.set('style', 'for-the-badge');
-                
+
+                // Add timestamp to prevent caching
+                url.searchParams.set('t', Date.now());
+
                 // Update image source
                 imgElement.src = url.toString();
-                
+
                 // Also update the link URL if it points to a dashboard
                 const parentLink = imgElement.closest('a');
                 if (parentLink) {
@@ -282,17 +344,20 @@
                 // Save original URL
                 const originalSrc = img.src;
                 img.setAttribute('data-original-src', originalSrc);
-                
+
                 // Apply style to initial display
                 let url = new URL(originalSrc, window.location.origin);
                 url.searchParams.set('style', 'for-the-badge');
                 img.src = url.toString();
             });
         }
-        
+
+        // Set up component refresh interval
+        let autoRefreshInterval = setInterval(refreshComponents, "{{if .ComponentRefreshInterval }}{{.ComponentRefreshInterval}}000{{else}}30000{{end}}");
+
         // Set up status badge refresh interval
         let badgeRefreshInterval = setInterval(refreshStatusBadges, "{{if .BadgeRefreshInterval }}{{.BadgeRefreshInterval}}000{{else}}3000{{end}}");
-                
+
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', () => {
             // Apply badge style and store original URLs
@@ -308,7 +373,7 @@
                 iframe.style.height = newHeight + 'px';
             }
         }
-        
+
         // Function to toggle fullscreen for an iframe
         function toggleFullscreen(iframeId) {
             const iframe = document.getElementById(iframeId);
@@ -332,26 +397,26 @@
                 }
             }
         }
-        
+
         // Initial iframe resize event setup
         let resizeTarget = null;
         let initialY = 0;
         let initialHeight = 0;
-        
+
         // Function to initialize resize
         function initResize(iframeId, event) {
             resizeTarget = document.getElementById(iframeId);
             if (resizeTarget) {
                 initialY = event.clientY;
                 initialHeight = parseInt(resizeTarget.style.height);
-                
+
                 // Add event listeners for resize
                 document.addEventListener('mousemove', doResize);
                 document.addEventListener('mouseup', stopResize);
             }
             event.preventDefault();
         }
-        
+
         // Function to perform resize
         function doResize(event) {
             if (resizeTarget) {
@@ -360,7 +425,7 @@
                 resizeTarget.style.height = newHeight + 'px';
             }
         }
-        
+
         // Function to stop resize
         function stopResize() {
             resizeTarget = null;
@@ -374,7 +439,7 @@
         .iframe-container {
             position: relative;
         }
-        
+
         .resize-handle {
             position: absolute;
             bottom: 0;
@@ -384,11 +449,11 @@
             background-color: transparent;
             cursor: ns-resize;
         }
-        
+
         .resize-handle:hover {
             background-color: rgba(0, 0, 0, 0.1);
         }
-        
+
         .resize-y {
             resize: vertical;
         }
