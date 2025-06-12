@@ -772,11 +772,12 @@ func InitServer() {
 				return
 			}
 
-			// Kill the query
-			_, err = db.Exec("SELECT pg_terminate_backend($1)", pid)
-			if err != nil {
-				log.Printf("Error killing query %s: %v", pid, err)
-				c.JSON(500, gin.H{"error": "Failed to kill query"})
+			// Kill the query and check the result boolean
+			var ok bool
+			err = db.QueryRow("SELECT pg_terminate_backend($1)", pid).Scan(&ok)
+			if err != nil || !ok {
+				log.Printf("Terminate backend %s failed: %v", pid, err)
+				c.JSON(409, gin.H{"error": "Query could not be terminated"})
 				return
 			}
 
