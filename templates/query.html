@@ -56,7 +56,7 @@
                 </thead>
                 <tbody id="queriesTable" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                     {{range .Queries}}
-                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700" data-pid="{{.PID}}">
+                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700" data-pid="{{.PID}}" data-server="{{.Server}}">
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{{.PID}}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{{.Username}}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{{.Database}}</td>
@@ -65,7 +65,7 @@
                             <div class="max-w-xl overflow-hidden text-ellipsis">{{.Query}}</div>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm">
-                            <button onclick="killQuery('{{.PID}}')" 
+                            <button onclick="killQuery('{{.PID}}', '{{.Server}}')" 
                                 class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 font-medium">
                                 Kill
                             </button>
@@ -119,7 +119,7 @@
         // Create table row HTML from query data
         function createQueryRow(query) {
             return `
-                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700" data-pid="${query.pid}">
+                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700" data-pid="${query.pid}" data-server="${query.server}">
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${query.pid}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${query.username}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${query.database}</td>
@@ -128,7 +128,7 @@
                         <div class="max-w-xl overflow-hidden text-ellipsis">${query.query}</div>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm">
-                        <button onclick="killQuery('${query.pid}')" 
+                        <button onclick="killQuery('${query.pid}', '${query.server}')" 
                             class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 font-medium">
                             Kill
                         </button>
@@ -215,11 +215,11 @@
                 });
         }
         
-        function showKillModal(pid) {
+        function showKillModal(pid, server) {
             clearInterval(autoRefreshInterval);
             document.getElementById('killPid').textContent = pid;
             document.getElementById('confirmKill').onclick = function() {
-                executeKill(pid);
+                executeKill(pid, server);
             };
             document.getElementById('killModal').classList.remove('hidden');
         }
@@ -229,7 +229,7 @@
             startAutoRefresh();
         }
 
-        function executeKill(pid) {
+        function executeKill(pid, server) {
             hideKillModal();
             
             // Show loading indicator
@@ -240,7 +240,7 @@
             const killButtons = document.querySelectorAll('button[onclick^="killQuery"]');
             killButtons.forEach(btn => btn.disabled = true);
             
-            fetch(`/api/v1/queries/${pid}`, {
+            fetch(`/api/v1/queries/${pid}?server=${encodeURIComponent(server)}`, {
                 method: 'DELETE',
             }).then(response => {
                 if (!response.ok) {
@@ -282,8 +282,8 @@
             });
         }
 
-        function killQuery(pid) {
-            showKillModal(pid);
+        function killQuery(pid, server) {
+            showKillModal(pid, server);
         }
 
         function startAutoRefresh() {

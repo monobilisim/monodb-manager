@@ -1077,7 +1077,12 @@ func InitServer() {
 
 		// Add a new endpoint for queries in JSON format - aggregate from all servers
 		v1.GET("/queries", func(c *gin.Context) {
-			var allQueries []Query
+			type QueryWithServer struct {
+				Query
+				Server string `json:"server"`
+			}
+
+			var allQueries []QueryWithServer
 
 			for _, server := range servers {
 				db, err := connectionManager.GetConnection(server.Name)
@@ -1115,7 +1120,12 @@ func InitServer() {
 					// Add server information to identify where the query is running
 					q.Username = fmt.Sprintf("%s@%s", q.Username, server.Name)
 					q.Database = fmt.Sprintf("%s@%s", q.Database, server.Name)
-					allQueries = append(allQueries, q)
+
+					qWithServer := QueryWithServer{
+						Query:  q,
+						Server: server.Name,
+					}
+					allQueries = append(allQueries, qWithServer)
 				}
 			}
 
@@ -1167,7 +1177,12 @@ func InitServer() {
 
 	// Add the query route handler for the query page - aggregate from all servers
 	router.GET("/query", func(c *gin.Context) {
-		var allQueries []Query
+		type QueryWithServer struct {
+			Query
+			Server string `json:"server"`
+		}
+
+		var allQueries []QueryWithServer
 
 		for _, server := range servers {
 			db, err := connectionManager.GetConnection(server.Name)
@@ -1205,7 +1220,12 @@ func InitServer() {
 				// Add server information to identify where the query is running
 				q.Username = fmt.Sprintf("%s@%s", q.Username, server.Name)
 				q.Database = fmt.Sprintf("%s@%s", q.Database, server.Name)
-				allQueries = append(allQueries, q)
+
+				qWithServer := QueryWithServer{
+					Query:  q,
+					Server: server.Name,
+				}
+				allQueries = append(allQueries, qWithServer)
 			}
 		}
 
