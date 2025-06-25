@@ -91,17 +91,28 @@ func (cm *ConnectionManager) GetConnection(serverName string) (*sql.DB, error) {
 		// Test connection before returning
 		if err := conn.Ping(); err == nil {
 			return conn, nil
+		} else {
+			// Connection is stale, remove it and recreate
+			log.Printf("Connection to %s is stale, recreating: %v", serverName, err)
+			cm.removeConnection(serverName)
 		}
-		// Connection is stale, remove it and recreate
-		cm.mutex.RUnlock()
-		cm.mutex.Lock()
-		delete(cm.connections, serverName)
-		cm.mutex.Unlock()
 	} else {
 		cm.mutex.RUnlock()
 	}
 
 	return cm.establishConnection(serverName)
+}
+
+// removeConnection safely removes a connection from the manager
+func (cm *ConnectionManager) removeConnection(serverName string) {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+
+	if conn, exists := cm.connections[serverName]; exists {
+		conn.Close()
+		delete(cm.connections, serverName)
+		log.Printf("Removed stale connection for server: %s", serverName)
+	}
 }
 
 // establishConnection creates a new database connection
@@ -1104,11 +1115,13 @@ func InitServer() {
 					AND pid != pg_backend_pid()
 					ORDER BY query_start DESC
 				`)
+
 				if err != nil {
 					log.Printf("Error querying active queries from server %s: %v", server.Name, err)
+					// Remove the connection if query fails, it might be stale
+					connectionManager.removeConnection(server.Name)
 					continue
 				}
-				defer rows.Close()
 
 				for rows.Next() {
 					var q Query
@@ -1127,6 +1140,7 @@ func InitServer() {
 					}
 					allQueries = append(allQueries, qWithServer)
 				}
+				rows.Close()
 			}
 
 			c.JSON(200, gin.H{"queries": allQueries})
@@ -1154,6 +1168,8 @@ func InitServer() {
 			err = db.QueryRow("SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE pid = $1)", pid).Scan(&exists)
 			if err != nil {
 				log.Printf("Error checking query existence on %s: %v", serverName, err)
+				// If there's an error, the connection might be bad, remove it
+				connectionManager.removeConnection(serverName)
 				c.JSON(500, gin.H{"error": "Failed to check query"})
 				return
 			}
@@ -1165,12 +1181,21 @@ func InitServer() {
 			// Kill the query and check the result boolean
 			var ok bool
 			err = db.QueryRow("SELECT pg_terminate_backend($1)", pid).Scan(&ok)
-			if err != nil || !ok {
+			if err != nil {
 				log.Printf("Terminate backend %s failed on %s: %v", pid, serverName, err)
+				// If there's an error during termination, the connection might be corrupted
+				connectionManager.removeConnection(serverName)
 				c.JSON(409, gin.H{"error": "Query could not be terminated"})
 				return
 			}
 
+			if !ok {
+				log.Printf("Terminate backend %s returned false on %s", pid, serverName)
+				c.JSON(409, gin.H{"error": "Query could not be terminated"})
+				return
+			}
+
+			log.Printf("Successfully killed query %s on server %s", pid, serverName)
 			c.JSON(200, gin.H{"message": fmt.Sprintf("Query killed successfully on server %s", serverName)})
 		})
 	}
@@ -1206,9 +1231,10 @@ func InitServer() {
 			`)
 			if err != nil {
 				log.Printf("Error querying active queries from server %s: %v", server.Name, err)
+				// Remove the connection if query fails, it might be stale
+				connectionManager.removeConnection(server.Name)
 				continue
 			}
-			defer rows.Close()
 
 			for rows.Next() {
 				var q Query
@@ -1227,6 +1253,7 @@ func InitServer() {
 				}
 				allQueries = append(allQueries, qWithServer)
 			}
+			rows.Close()
 		}
 
 		c.HTML(200, "query.html", gin.H{
