@@ -21,13 +21,16 @@ import (
 
 // PostgreSQLServer represents a single PostgreSQL server configuration
 type PostgreSQLServer struct {
-	Name     string `yaml:"name"`
-	Host     string `yaml:"host"`
-	Port     int    `yaml:"port"`
-	User     string `yaml:"user"`
-	Password string `yaml:"password"`
-	DBName   string `yaml:"dbname"`
-	SSLMode  string `yaml:"sslmode"`
+	Name             string `yaml:"name"`
+	Host             string `yaml:"host"`
+	Port             int    `yaml:"port"`
+	User             string `yaml:"user"`
+	Password         string `yaml:"password"`
+	DBName           string `yaml:"dbname"`
+	SSLMode          string `yaml:"sslmode"`
+	DiscoverBackends bool   `yaml:"discover_backends,omitempty"`
+	MaxAttempts      int    `yaml:"attempts,omitempty"`
+	StableRepeats    int    `yaml:"stable_repeats,omitempty"`
 }
 
 // Config holds database connection parameters and application settings
@@ -62,18 +65,24 @@ type Config struct {
 	BadgeRefreshInterval int `yaml:"badge_refresh_interval"`
 }
 
+// BackendConn represents a connection to a specific backend with its PID
+type BackendConn struct {
+	DB  *sql.DB
+	PID int
+}
+
 // ConnectionManager manages database connections to multiple PostgreSQL servers
 type ConnectionManager struct {
-	connections map[string]*sql.DB
-	configs     map[string]PostgreSQLServer
-	mutex       sync.RWMutex
+	backends map[string][]BackendConn
+	configs  map[string]PostgreSQLServer
+	mutex    sync.RWMutex
 }
 
 // NewConnectionManager creates a new connection manager
 func NewConnectionManager(servers []PostgreSQLServer) *ConnectionManager {
 	cm := &ConnectionManager{
-		connections: make(map[string]*sql.DB),
-		configs:     make(map[string]PostgreSQLServer),
+		backends: make(map[string][]BackendConn),
+		configs:  make(map[string]PostgreSQLServer),
 	}
 
 	for _, server := range servers {
@@ -83,24 +92,46 @@ func NewConnectionManager(servers []PostgreSQLServer) *ConnectionManager {
 	return cm
 }
 
-// GetConnection returns a database connection for the specified server
+// GetConnection returns a database connection for the specified server (backward compatibility)
 func (cm *ConnectionManager) GetConnection(serverName string) (*sql.DB, error) {
+	backends := cm.GetBackendConnections(serverName)
+	if len(backends) == 0 {
+		return cm.establishConnection(serverName)
+	}
+	return backends[0].DB, nil
+}
+
+// GetBackendConnections returns all backend connections for the specified server
+func (cm *ConnectionManager) GetBackendConnections(serverName string) []BackendConn {
 	cm.mutex.RLock()
-	if conn, exists := cm.connections[serverName]; exists {
-		cm.mutex.RUnlock()
-		// Test connection before returning
-		if err := conn.Ping(); err == nil {
-			return conn, nil
-		} else {
-			// Connection is stale, remove it and recreate
-			log.Printf("Connection to %s is stale, recreating: %v", serverName, err)
-			cm.removeConnection(serverName)
-		}
-	} else {
-		cm.mutex.RUnlock()
+	defer cm.mutex.RUnlock()
+
+	backends, exists := cm.backends[serverName]
+	if !exists {
+		return nil
 	}
 
-	return cm.establishConnection(serverName)
+	// Test all connections and remove stale ones
+	validBackends := make([]BackendConn, 0, len(backends))
+	for _, backend := range backends {
+		if err := backend.DB.Ping(); err == nil {
+			validBackends = append(validBackends, backend)
+		} else {
+			log.Printf("Backend connection to %s (PID %d) is stale, removing: %v", serverName, backend.PID, err)
+			backend.DB.Close()
+		}
+	}
+
+	// Update the stored backends if any were removed
+	if len(validBackends) != len(backends) {
+		cm.mutex.RUnlock()
+		cm.mutex.Lock()
+		cm.backends[serverName] = validBackends
+		cm.mutex.Unlock()
+		cm.mutex.RLock()
+	}
+
+	return validBackends
 }
 
 // removeConnection safely removes a connection from the manager
@@ -108,31 +139,68 @@ func (cm *ConnectionManager) removeConnection(serverName string) {
 	cm.mutex.Lock()
 	defer cm.mutex.Unlock()
 
-	if conn, exists := cm.connections[serverName]; exists {
-		conn.Close()
-		delete(cm.connections, serverName)
-		log.Printf("Removed stale connection for server: %s", serverName)
+	if backends, exists := cm.backends[serverName]; exists {
+		for _, backend := range backends {
+			backend.DB.Close()
+		}
+		delete(cm.backends, serverName)
+		log.Printf("Removed stale connections for server: %s", serverName)
 	}
 }
 
-// establishConnection creates a new database connection
+// establishConnection creates new database connection(s)
 func (cm *ConnectionManager) establishConnection(serverName string) (*sql.DB, error) {
-	cm.mutex.Lock()
-	defer cm.mutex.Unlock()
-
-	// Double-check if connection was created while we were waiting for the lock
-	if conn, exists := cm.connections[serverName]; exists {
-		if err := conn.Ping(); err == nil {
-			return conn, nil
-		}
-		delete(cm.connections, serverName)
-	}
-
 	config, exists := cm.configs[serverName]
 	if !exists {
 		return nil, fmt.Errorf("server %s not found in configuration", serverName)
 	}
 
+	if config.DiscoverBackends {
+		if err := cm.discoverBackends(config); err != nil {
+			return nil, err
+		}
+		backends := cm.GetBackendConnections(serverName)
+		if len(backends) > 0 {
+			return backends[0].DB, nil
+		}
+		return nil, fmt.Errorf("no backends discovered for server %s", serverName)
+	}
+
+	// Single connection mode (legacy behavior)
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+
+	// Double-check if connection was created while we were waiting for the lock
+	if backends, exists := cm.backends[serverName]; exists && len(backends) > 0 {
+		if err := backends[0].DB.Ping(); err == nil {
+			return backends[0].DB, nil
+		}
+		// Remove stale connection
+		for _, backend := range backends {
+			backend.DB.Close()
+		}
+		delete(cm.backends, serverName)
+	}
+
+	db, err := cm.createSingleConnection(config)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get PID for this connection
+	var pid int
+	if err := db.QueryRow("SELECT pg_backend_pid()").Scan(&pid); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to get backend PID for %s: %v", serverName, err)
+	}
+
+	cm.backends[serverName] = []BackendConn{{DB: db, PID: pid}}
+	log.Printf("Established connection to PostgreSQL server: %s (%s:%d) PID: %d", serverName, config.Host, config.Port, pid)
+	return db, nil
+}
+
+// createSingleConnection creates a single database connection
+func (cm *ConnectionManager) createSingleConnection(config PostgreSQLServer) (*sql.DB, error) {
 	connStr := fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
 		config.Host,
@@ -145,17 +213,78 @@ func (cm *ConnectionManager) establishConnection(serverName string) (*sql.DB, er
 
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open connection to %s: %v", serverName, err)
+		return nil, fmt.Errorf("failed to open connection to %s: %v", config.Name, err)
 	}
 
 	if err := db.Ping(); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to ping %s: %v", serverName, err)
+		return nil, fmt.Errorf("failed to ping %s: %v", config.Name, err)
 	}
 
-	cm.connections[serverName] = db
-	log.Printf("Established connection to PostgreSQL server: %s (%s:%d)", serverName, config.Host, config.Port)
+	// Configure connection pooling for persistent connections
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxIdleTime(0) // Keep connections open indefinitely
+
 	return db, nil
+}
+
+// discoverBackends discovers all backend connections behind a load balancer
+func (cm *ConnectionManager) discoverBackends(config PostgreSQLServer) error {
+	cm.mutex.Lock()
+	defer cm.mutex.Unlock()
+
+	// Set defaults
+	maxAttempts := config.MaxAttempts
+	if maxAttempts == 0 {
+		maxAttempts = 12
+	}
+	stableRepeats := config.StableRepeats
+	if stableRepeats == 0 {
+		stableRepeats = 4
+	}
+
+	seenPIDs := make(map[int]bool)
+	var backends []BackendConn
+	dupStreak := 0
+
+	log.Printf("Discovering backends for server %s (max attempts: %d, stable repeats: %d)", config.Name, maxAttempts, stableRepeats)
+
+	for i := 0; i < maxAttempts; i++ {
+		db, err := cm.createSingleConnection(config)
+		if err != nil {
+			log.Printf("Failed to create connection attempt %d for %s: %v", i+1, config.Name, err)
+			continue
+		}
+
+		var pid int
+		if err := db.QueryRow("SELECT pg_backend_pid()").Scan(&pid); err != nil {
+			log.Printf("Failed to get backend PID for %s attempt %d: %v", config.Name, i+1, err)
+			db.Close()
+			continue
+		}
+
+		if !seenPIDs[pid] {
+			seenPIDs[pid] = true
+			backends = append(backends, BackendConn{DB: db, PID: pid})
+			dupStreak = 0
+			log.Printf("Discovered new backend for %s: PID %d", config.Name, pid)
+		} else {
+			dupStreak++
+			db.Close()
+			log.Printf("Duplicate PID %d for %s (streak: %d/%d)", pid, config.Name, dupStreak, stableRepeats)
+			if dupStreak >= stableRepeats {
+				break
+			}
+		}
+	}
+
+	if len(backends) == 0 {
+		return fmt.Errorf("no backends discovered for server %s", config.Name)
+	}
+
+	cm.backends[config.Name] = backends
+	log.Printf("Successfully discovered %d backends for server %s", len(backends), config.Name)
+	return nil
 }
 
 // GetServerNames returns all configured server names
@@ -184,12 +313,15 @@ func (cm *ConnectionManager) Close() {
 	cm.mutex.Lock()
 	defer cm.mutex.Unlock()
 
-	for name, conn := range cm.connections {
-		if err := conn.Close(); err != nil {
-			log.Printf("Error closing connection to %s: %v", name, err)
+	for name, backends := range cm.backends {
+		for _, backend := range backends {
+			if err := backend.DB.Close(); err != nil {
+				log.Printf("Error closing backend connection to %s (PID %d): %v", name, backend.PID, err)
+			}
 		}
+		log.Printf("Closed %d backend connections to PostgreSQL server: %s", len(backends), name)
 	}
-	cm.connections = make(map[string]*sql.DB)
+	cm.backends = make(map[string][]BackendConn)
 }
 
 type User struct {
@@ -1090,57 +1222,59 @@ func InitServer() {
 		v1.GET("/queries", func(c *gin.Context) {
 			type QueryWithServer struct {
 				Query
-				Server string `json:"server"`
+				Server     string `json:"server"`
+				BackendPID int    `json:"backend_pid"`
 			}
 
 			var allQueries []QueryWithServer
 
 			for _, server := range servers {
-				db, err := connectionManager.GetConnection(server.Name)
-				if err != nil {
-					log.Printf("Error connecting to server %s: %v", server.Name, err)
+				backends := connectionManager.GetBackendConnections(server.Name)
+				if len(backends) == 0 {
+					log.Printf("No backend connections available for server %s", server.Name)
 					continue
 				}
 
-				rows, err := db.Query(`
-					SELECT
-						pid,
-						usename,
-						COALESCE(datname, 'system') as datname,
-						EXTRACT(EPOCH FROM now() - query_start)::text || 's' as duration,
-						query
-					FROM pg_stat_activity
-					WHERE state = 'active'
-					AND query NOT ILIKE '%pg_stat_activity%'
-					AND pid != pg_backend_pid()
-					ORDER BY query_start DESC
-				`)
+				for _, backend := range backends {
+					rows, err := backend.DB.Query(`
+						SELECT
+							pid,
+							usename,
+							COALESCE(datname, 'system') as datname,
+							EXTRACT(EPOCH FROM now() - query_start)::text || 's' as duration,
+							query
+						FROM pg_stat_activity
+						WHERE state = 'active'
+						AND query NOT ILIKE '%pg_stat_activity%'
+						AND pid != pg_backend_pid()
+						ORDER BY query_start DESC
+					`)
 
-				if err != nil {
-					log.Printf("Error querying active queries from server %s: %v", server.Name, err)
-					// Remove the connection if query fails, it might be stale
-					connectionManager.removeConnection(server.Name)
-					continue
-				}
-
-				for rows.Next() {
-					var q Query
-					err := rows.Scan(&q.PID, &q.Username, &q.Database, &q.Duration, &q.Query)
 					if err != nil {
-						log.Printf("Error scanning query row from server %s: %v", server.Name, err)
+						log.Printf("Error querying active queries from server %s backend PID %d: %v", server.Name, backend.PID, err)
 						continue
 					}
-					// Add server information to identify where the query is running
-					q.Username = fmt.Sprintf("%s@%s", q.Username, server.Name)
-					q.Database = fmt.Sprintf("%s@%s", q.Database, server.Name)
 
-					qWithServer := QueryWithServer{
-						Query:  q,
-						Server: server.Name,
+					for rows.Next() {
+						var q Query
+						err := rows.Scan(&q.PID, &q.Username, &q.Database, &q.Duration, &q.Query)
+						if err != nil {
+							log.Printf("Error scanning query row from server %s backend PID %d: %v", server.Name, backend.PID, err)
+							continue
+						}
+						// Add server information to identify where the query is running
+						q.Username = fmt.Sprintf("%s@%s", q.Username, server.Name)
+						q.Database = fmt.Sprintf("%s@%s", q.Database, server.Name)
+
+						qWithServer := QueryWithServer{
+							Query:      q,
+							Server:     server.Name,
+							BackendPID: backend.PID,
+						}
+						allQueries = append(allQueries, qWithServer)
 					}
-					allQueries = append(allQueries, qWithServer)
+					rows.Close()
 				}
-				rows.Close()
 			}
 
 			c.JSON(200, gin.H{"queries": allQueries})
@@ -1156,47 +1290,56 @@ func InitServer() {
 				return
 			}
 
-			db, err := connectionManager.GetConnection(serverName)
-			if err != nil {
-				log.Printf("Error connecting to server %s: %v", serverName, err)
-				c.JSON(500, gin.H{"error": fmt.Sprintf("Failed to connect to server %s", serverName)})
+			backends := connectionManager.GetBackendConnections(serverName)
+			if len(backends) == 0 {
+				log.Printf("No backend connections available for server %s", serverName)
+				c.JSON(500, gin.H{"error": fmt.Sprintf("No connections available for server %s", serverName)})
 				return
 			}
 
-			// First check if query exists
-			var exists bool
-			err = db.QueryRow("SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE pid = $1)", pid).Scan(&exists)
-			if err != nil {
-				log.Printf("Error checking query existence on %s: %v", serverName, err)
-				// If there's an error, the connection might be bad, remove it
-				connectionManager.removeConnection(serverName)
-				c.JSON(500, gin.H{"error": "Failed to check query"})
-				return
+			// Try to find and kill the query on any backend of this server
+			var queryFound bool
+			var killSuccessful bool
+
+			for _, backend := range backends {
+				// First check if query exists on this backend
+				var exists bool
+				err := backend.DB.QueryRow("SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE pid = $1)", pid).Scan(&exists)
+				if err != nil {
+					log.Printf("Error checking query existence on %s backend PID %d: %v", serverName, backend.PID, err)
+					continue
+				}
+
+				if exists {
+					queryFound = true
+					// Kill the query and check the result boolean
+					var ok bool
+					err = backend.DB.QueryRow("SELECT pg_terminate_backend($1)", pid).Scan(&ok)
+					if err != nil {
+						log.Printf("Terminate backend %s failed on %s backend PID %d: %v", pid, serverName, backend.PID, err)
+						continue
+					}
+
+					if ok {
+						killSuccessful = true
+						log.Printf("Successfully killed query %s on server %s backend PID %d", pid, serverName, backend.PID)
+						c.JSON(200, gin.H{"message": fmt.Sprintf("Query killed successfully on server %s", serverName)})
+						return
+					} else {
+						log.Printf("Terminate backend %s returned false on %s backend PID %d", pid, serverName, backend.PID)
+					}
+				}
 			}
-			if !exists {
-				c.JSON(404, gin.H{"error": "Query not found"})
+
+			if !queryFound {
+				c.JSON(404, gin.H{"error": "Query not found on any backend"})
 				return
 			}
 
-			// Kill the query and check the result boolean
-			var ok bool
-			err = db.QueryRow("SELECT pg_terminate_backend($1)", pid).Scan(&ok)
-			if err != nil {
-				log.Printf("Terminate backend %s failed on %s: %v", pid, serverName, err)
-				// If there's an error during termination, the connection might be corrupted
-				connectionManager.removeConnection(serverName)
+			if !killSuccessful {
 				c.JSON(409, gin.H{"error": "Query could not be terminated"})
 				return
 			}
-
-			if !ok {
-				log.Printf("Terminate backend %s returned false on %s", pid, serverName)
-				c.JSON(409, gin.H{"error": "Query could not be terminated"})
-				return
-			}
-
-			log.Printf("Successfully killed query %s on server %s", pid, serverName)
-			c.JSON(200, gin.H{"message": fmt.Sprintf("Query killed successfully on server %s", serverName)})
 		})
 	}
 
@@ -1204,56 +1347,58 @@ func InitServer() {
 	router.GET("/query", func(c *gin.Context) {
 		type QueryWithServer struct {
 			Query
-			Server string `json:"server"`
+			Server     string `json:"server"`
+			BackendPID int    `json:"backend_pid"`
 		}
 
 		var allQueries []QueryWithServer
 
 		for _, server := range servers {
-			db, err := connectionManager.GetConnection(server.Name)
-			if err != nil {
-				log.Printf("Error connecting to server %s: %v", server.Name, err)
+			backends := connectionManager.GetBackendConnections(server.Name)
+			if len(backends) == 0 {
+				log.Printf("No backend connections available for server %s", server.Name)
 				continue
 			}
 
-			rows, err := db.Query(`
-				SELECT
-					pid,
-					usename,
-					COALESCE(datname, 'system') as datname,
-					EXTRACT(EPOCH FROM now() - query_start)::text || 's' as duration,
-					query
-				FROM pg_stat_activity
-				WHERE state = 'active'
-				AND query NOT ILIKE '%pg_stat_activity%'
-				AND pid != pg_backend_pid()
-				ORDER BY query_start DESC
-			`)
-			if err != nil {
-				log.Printf("Error querying active queries from server %s: %v", server.Name, err)
-				// Remove the connection if query fails, it might be stale
-				connectionManager.removeConnection(server.Name)
-				continue
-			}
-
-			for rows.Next() {
-				var q Query
-				err := rows.Scan(&q.PID, &q.Username, &q.Database, &q.Duration, &q.Query)
+			for _, backend := range backends {
+				rows, err := backend.DB.Query(`
+					SELECT
+						pid,
+						usename,
+						COALESCE(datname, 'system') as datname,
+						EXTRACT(EPOCH FROM now() - query_start)::text || 's' as duration,
+						query
+					FROM pg_stat_activity
+					WHERE state = 'active'
+					AND query NOT ILIKE '%pg_stat_activity%'
+					AND pid != pg_backend_pid()
+					ORDER BY query_start DESC
+				`)
 				if err != nil {
-					log.Printf("Error scanning query row from server %s: %v", server.Name, err)
+					log.Printf("Error querying active queries from server %s backend PID %d: %v", server.Name, backend.PID, err)
 					continue
 				}
-				// Add server information to identify where the query is running
-				q.Username = fmt.Sprintf("%s@%s", q.Username, server.Name)
-				q.Database = fmt.Sprintf("%s@%s", q.Database, server.Name)
 
-				qWithServer := QueryWithServer{
-					Query:  q,
-					Server: server.Name,
+				for rows.Next() {
+					var q Query
+					err := rows.Scan(&q.PID, &q.Username, &q.Database, &q.Duration, &q.Query)
+					if err != nil {
+						log.Printf("Error scanning query row from server %s backend PID %d: %v", server.Name, backend.PID, err)
+						continue
+					}
+					// Add server information to identify where the query is running
+					q.Username = fmt.Sprintf("%s@%s", q.Username, server.Name)
+					q.Database = fmt.Sprintf("%s@%s", q.Database, server.Name)
+
+					qWithServer := QueryWithServer{
+						Query:      q,
+						Server:     server.Name,
+						BackendPID: backend.PID,
+					}
+					allQueries = append(allQueries, qWithServer)
 				}
-				allQueries = append(allQueries, qWithServer)
+				rows.Close()
 			}
-			rows.Close()
 		}
 
 		c.HTML(200, "query.html", gin.H{
