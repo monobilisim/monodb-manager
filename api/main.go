@@ -2,9 +2,11 @@ package api
 
 import (
 	"database/sql"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -19,18 +21,19 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// PostgreSQLServer represents a single PostgreSQL server configuration
+// PostgreSQLServer represents a Patroni-managed PostgreSQL cluster configuration
 type PostgreSQLServer struct {
-	Name             string `yaml:"name"`
-	Host             string `yaml:"host"`
-	Port             int    `yaml:"port"`
-	User             string `yaml:"user"`
-	Password         string `yaml:"password"`
-	DBName           string `yaml:"dbname"`
-	SSLMode          string `yaml:"sslmode"`
-	DiscoverBackends bool   `yaml:"discover_backends,omitempty"`
-	MaxAttempts      int    `yaml:"attempts,omitempty"`
-	StableRepeats    int    `yaml:"stable_repeats,omitempty"`
+	Name     string `yaml:"name"`
+	User     string `yaml:"user"`
+	Password string `yaml:"password"`
+	DBName   string `yaml:"dbname"`
+	SSLMode  string `yaml:"sslmode"`
+
+	// Patroni configuration
+	PatroniNodes    []string `yaml:"patroni_nodes"`               // List of Patroni REST API endpoints
+	PatroniPort     int      `yaml:"patroni_port,omitempty"`      // Patroni REST API port (default 8008)
+	PreferLeader    bool     `yaml:"prefer_leader,omitempty"`     // Connect to leader by default
+	ConnectToLeader bool     `yaml:"connect_to_leader,omitempty"` // Only connect to leader
 }
 
 // Config holds database connection parameters and application settings
@@ -63,6 +66,24 @@ type Config struct {
 
 	// Refresh intervals (in seconds)
 	BadgeRefreshInterval int `yaml:"badge_refresh_interval"`
+}
+
+// PatroniMember represents a member in the Patroni cluster
+type PatroniMember struct {
+	Name     string `json:"name"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Role     string `json:"role"`
+	State    string `json:"state"`
+	Timeline int    `json:"timeline"`
+	Lag      int    `json:"lag"`
+}
+
+// PatroniCluster represents the Patroni cluster information
+type PatroniCluster struct {
+	Members []PatroniMember `json:"members"`
+	Leader  string          `json:"leader"`
+	Sync    []string        `json:"sync_standby"`
 }
 
 // BackendConn represents a connection to a specific backend with its PID
@@ -148,63 +169,157 @@ func (cm *ConnectionManager) removeConnection(serverName string) {
 	}
 }
 
-// establishConnection creates new database connection(s)
-func (cm *ConnectionManager) establishConnection(serverName string) (*sql.DB, error) {
+// discoverPatroniCluster queries Patroni REST API to discover cluster members
+func (cm *ConnectionManager) discoverPatroniCluster(config PostgreSQLServer) (*PatroniCluster, error) {
+	patroniPort := config.PatroniPort
+	if patroniPort == 0 {
+		patroniPort = 8008 // Default Patroni REST API port
+	}
+
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	// Try each Patroni node to get cluster information
+	for _, node := range config.PatroniNodes {
+		url := fmt.Sprintf("http://%s:%d/cluster", node, patroniPort)
+		resp, err := client.Get(url)
+		if err != nil {
+			log.Printf("Failed to connect to Patroni node %s: %v", node, err)
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("Patroni node %s returned status %d", node, resp.StatusCode)
+			continue
+		}
+
+		var cluster PatroniCluster
+		if err := json.NewDecoder(resp.Body).Decode(&cluster); err != nil {
+			log.Printf("Failed to decode Patroni response from %s: %v", node, err)
+			continue
+		}
+
+		log.Printf("Successfully discovered Patroni cluster from node %s: %d members, leader: %s",
+			node, len(cluster.Members), cluster.Leader)
+		return &cluster, nil
+	}
+
+	return nil, fmt.Errorf("failed to discover Patroni cluster from any node")
+}
+
+// establishPatroniConnection creates connections to Patroni cluster members
+func (cm *ConnectionManager) establishPatroniConnection(serverName string) (*sql.DB, error) {
 	config, exists := cm.configs[serverName]
 	if !exists {
 		return nil, fmt.Errorf("server %s not found in configuration", serverName)
 	}
 
-	if config.DiscoverBackends {
-		if err := cm.discoverBackends(config); err != nil {
-			return nil, err
-		}
-		backends := cm.GetBackendConnections(serverName)
-		if len(backends) > 0 {
-			return backends[0].DB, nil
-		}
-		return nil, fmt.Errorf("no backends discovered for server %s", serverName)
+	cluster, err := cm.discoverPatroniCluster(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to discover Patroni cluster for %s: %v", serverName, err)
 	}
 
-	// Single connection mode (legacy behavior)
 	cm.mutex.Lock()
 	defer cm.mutex.Unlock()
 
-	// Double-check if connection was created while we were waiting for the lock
-	if backends, exists := cm.backends[serverName]; exists && len(backends) > 0 {
-		if err := backends[0].DB.Ping(); err == nil {
-			return backends[0].DB, nil
-		}
-		// Remove stale connection
+	// Clear existing connections for this server
+	if backends, exists := cm.backends[serverName]; exists {
 		for _, backend := range backends {
 			backend.DB.Close()
 		}
 		delete(cm.backends, serverName)
 	}
 
-	db, err := cm.createSingleConnection(config)
-	if err != nil {
-		return nil, err
+	var backends []BackendConn
+	var leaderConn *BackendConn
+
+	// Connect to each cluster member
+	for _, member := range cluster.Members {
+		// Skip if we only want leader connections and this isn't the leader
+		if config.ConnectToLeader && member.Role != "leader" {
+			continue
+		}
+
+		// Connect to this specific member
+		db, err := cm.createSingleConnection(config, member.Host, member.Port)
+		if err != nil {
+			log.Printf("Failed to connect to Patroni member %s (%s:%d): %v",
+				member.Name, member.Host, member.Port, err)
+			continue
+		}
+
+		// Get PID for this connection
+		var pid int
+		if err := db.QueryRow("SELECT pg_backend_pid()").Scan(&pid); err != nil {
+			log.Printf("Failed to get backend PID for Patroni member %s: %v", member.Name, err)
+			db.Close()
+			continue
+		}
+
+		backend := BackendConn{DB: db, PID: pid}
+		backends = append(backends, backend)
+
+		if member.Role == "leader" {
+			leaderConn = &backend
+		}
+
+		log.Printf("Connected to Patroni member %s (%s:%d) - Role: %s, State: %s, PID: %d",
+			member.Name, member.Host, member.Port, member.Role, member.State, pid)
 	}
 
-	// Get PID for this connection
-	var pid int
-	if err := db.QueryRow("SELECT pg_backend_pid()").Scan(&pid); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to get backend PID for %s: %v", serverName, err)
+	if len(backends) == 0 {
+		return nil, fmt.Errorf("failed to connect to any Patroni cluster members for %s", serverName)
 	}
 
-	cm.backends[serverName] = []BackendConn{{DB: db, PID: pid}}
-	log.Printf("Established connection to PostgreSQL server: %s (%s:%d) PID: %d", serverName, config.Host, config.Port, pid)
-	return db, nil
+	cm.backends[serverName] = backends
+
+	// Return leader connection if preferred, otherwise return first available
+	if config.PreferLeader && leaderConn != nil {
+		return leaderConn.DB, nil
+	}
+	return backends[0].DB, nil
 }
 
-// createSingleConnection creates a single database connection
-func (cm *ConnectionManager) createSingleConnection(config PostgreSQLServer) (*sql.DB, error) {
+// getLeaderConnectionDetails returns the host and port of the leader node from Patroni cluster
+func (cm *ConnectionManager) getLeaderConnectionDetails(serverName string) (string, int, error) {
+	config, exists := cm.configs[serverName]
+	if !exists {
+		return "", 0, fmt.Errorf("server %s not found in configuration", serverName)
+	}
+
+	cluster, err := cm.discoverPatroniCluster(config)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to discover Patroni cluster for %s: %v", serverName, err)
+	}
+
+	// Find the leader node
+	for _, member := range cluster.Members {
+		if member.Role == "leader" {
+			return member.Host, member.Port, nil
+		}
+	}
+
+	// If no leader found, use the first available node
+	if len(cluster.Members) > 0 {
+		return cluster.Members[0].Host, cluster.Members[0].Port, nil
+	}
+
+	return "", 0, fmt.Errorf("no cluster members found for %s", serverName)
+}
+
+// establishConnection creates new database connection(s) - always uses Patroni mode
+func (cm *ConnectionManager) establishConnection(serverName string) (*sql.DB, error) {
+	return cm.establishPatroniConnection(serverName)
+}
+
+// createSingleConnection creates a single database connection to a specific host:port
+func (cm *ConnectionManager) createSingleConnection(config PostgreSQLServer, host string, port int) (*sql.DB, error) {
 	connStr := fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		config.Host,
-		config.Port,
+		host,
+		port,
 		config.User,
 		config.Password,
 		config.DBName,
@@ -226,65 +341,6 @@ func (cm *ConnectionManager) createSingleConnection(config PostgreSQLServer) (*s
 	db.SetConnMaxIdleTime(0) // Keep connections open indefinitely
 
 	return db, nil
-}
-
-// discoverBackends discovers all backend connections behind a load balancer
-func (cm *ConnectionManager) discoverBackends(config PostgreSQLServer) error {
-	cm.mutex.Lock()
-	defer cm.mutex.Unlock()
-
-	// Set defaults
-	maxAttempts := config.MaxAttempts
-	if maxAttempts == 0 {
-		maxAttempts = 12
-	}
-	stableRepeats := config.StableRepeats
-	if stableRepeats == 0 {
-		stableRepeats = 4
-	}
-
-	seenPIDs := make(map[int]bool)
-	var backends []BackendConn
-	dupStreak := 0
-
-	log.Printf("Discovering backends for server %s (max attempts: %d, stable repeats: %d)", config.Name, maxAttempts, stableRepeats)
-
-	for i := 0; i < maxAttempts; i++ {
-		db, err := cm.createSingleConnection(config)
-		if err != nil {
-			log.Printf("Failed to create connection attempt %d for %s: %v", i+1, config.Name, err)
-			continue
-		}
-
-		var pid int
-		if err := db.QueryRow("SELECT pg_backend_pid()").Scan(&pid); err != nil {
-			log.Printf("Failed to get backend PID for %s attempt %d: %v", config.Name, i+1, err)
-			db.Close()
-			continue
-		}
-
-		if !seenPIDs[pid] {
-			seenPIDs[pid] = true
-			backends = append(backends, BackendConn{DB: db, PID: pid})
-			dupStreak = 0
-			log.Printf("Discovered new backend for %s: PID %d", config.Name, pid)
-		} else {
-			dupStreak++
-			db.Close()
-			log.Printf("Duplicate PID %d for %s (streak: %d/%d)", pid, config.Name, dupStreak, stableRepeats)
-			if dupStreak >= stableRepeats {
-				break
-			}
-		}
-	}
-
-	if len(backends) == 0 {
-		return fmt.Errorf("no backends discovered for server %s", config.Name)
-	}
-
-	cm.backends[config.Name] = backends
-	log.Printf("Successfully discovered %d backends for server %s", len(backends), config.Name)
-	return nil
 }
 
 // GetServerNames returns all configured server names
@@ -503,24 +559,7 @@ func InitServer() {
 		servers = config.Servers
 		log.Printf("Configured %d PostgreSQL servers", len(servers))
 	} else {
-		// Single-server mode: use CLI flags (backward compatibility)
-		log.Println("Using single-server mode (legacy)")
-		if config.Password == "" {
-			log.Fatal("Password is required in single-server mode")
-		}
-
-		servers = []PostgreSQLServer{
-			{
-				Name:     "default",
-				Host:     config.Host,
-				Port:     config.Port,
-				User:     config.User,
-				Password: config.Password,
-				DBName:   config.DBName,
-				SSLMode:  config.SSLMode,
-			},
-		}
-		config.Servers = servers
+		log.Fatal("Configuration file is required - single server mode is not supported. Please use -config flag with a Patroni cluster configuration.")
 	}
 
 	// Initialize connection manager
@@ -596,11 +635,22 @@ func InitServer() {
 		for _, server := range servers {
 			status := map[string]interface{}{
 				"name":      server.Name,
-				"host":      server.Host,
-				"port":      server.Port,
+				"host":      "patroni-cluster",
+				"port":      "dynamic",
 				"status":    "disconnected",
 				"users":     0,
 				"databases": 0,
+			}
+
+			// Discover Patroni cluster (all servers are Patroni clusters now)
+			cluster, err := connectionManager.discoverPatroniCluster(server)
+			if err != nil {
+				log.Printf("Error discovering Patroni cluster %s: %v", server.Name, err)
+				status["error"] = err.Error()
+			} else {
+				status["use_patroni"] = true
+				status["patroni_cluster"] = cluster
+				status["status"] = "patroni"
 			}
 
 			db, err := connectionManager.GetConnection(server.Name)
@@ -733,10 +783,17 @@ func InitServer() {
 						// Check each database for actual privileges
 						for _, dbName := range databases {
 							func() {
+								// Get leader connection details from Patroni cluster
+								host, port, err := connectionManager.getLeaderConnectionDetails(server.Name)
+								if err != nil {
+									log.Printf("Error getting leader connection details for %s: %v", server.Name, err)
+									return
+								}
+
 								dbConnStr := fmt.Sprintf(
 									"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-									server.Host,
-									server.Port,
+									host,
+									port,
 									server.User,
 									server.Password,
 									dbName,
@@ -913,10 +970,17 @@ func InitServer() {
 							// Check each database for actual privileges
 							for _, dbName := range databases {
 								func() {
+									// Get leader connection details from Patroni cluster
+									host, port, err := connectionManager.getLeaderConnectionDetails(server.Name)
+									if err != nil {
+										log.Printf("Error getting leader connection details for %s: %v", server.Name, err)
+										return
+									}
+
 									dbConnStr := fmt.Sprintf(
 										"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-										server.Host,
-										server.Port,
+										host,
+										port,
 										server.User,
 										server.Password,
 										dbName,
@@ -1085,10 +1149,17 @@ func InitServer() {
 						continue
 					}
 
+					// Get leader connection details from Patroni cluster
+					host, port, err := connectionManager.getLeaderConnectionDetails(serverName)
+					if err != nil {
+						log.Printf("Error getting leader connection details for %s: %v", serverName, err)
+						continue
+					}
+
 					dbConnStr := fmt.Sprintf(
 						"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-						serverConfig.Host,
-						serverConfig.Port,
+						host,
+						port,
 						serverConfig.User,
 						serverConfig.Password,
 						dbName,
@@ -1169,10 +1240,17 @@ func InitServer() {
 					var dbName string
 					if err := rows.Scan(&dbName); err == nil {
 						// Connect to each database to revoke schema-level privileges
+						// Get leader connection details from Patroni cluster
+						host, port, err := connectionManager.getLeaderConnectionDetails(serverName)
+						if err != nil {
+							log.Printf("Error getting leader connection details for %s: %v", serverName, err)
+							continue
+						}
+
 						dbConnStr := fmt.Sprintf(
 							"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-							serverConfig.Host,
-							serverConfig.Port,
+							host,
+							port,
 							serverConfig.User,
 							serverConfig.Password,
 							dbName,
