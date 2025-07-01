@@ -77,6 +77,41 @@
         </div>
         {{end}}
 
+        {{if .QueryIframeURL}}
+        <div id="queryAnalyticsContainer" class="mb-8 bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Query Performance Analysis</h2>
+                <div class="flex items-center space-x-2">
+                    <button onclick="adjustIframeHeight('queryAnalyticsIframe', 150)" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
+                    <button onclick="adjustIframeHeight('queryAnalyticsIframe', -150)" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+                        </svg>
+                    </button>
+                    <button onclick="toggleFullscreen('queryAnalyticsIframe')" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="w-full iframe-container">
+                <iframe
+                    id="queryAnalyticsIframe"
+                    src="{{.QueryIframeURL}}"
+                    class="w-full border-0 resize-y"
+                    style="min-height: 500px; height: 500px;"
+                    allow="fullscreen">
+                </iframe>
+                <div class="resize-handle" onmousedown="initResize('queryAnalyticsIframe', event)"></div>
+            </div>
+        </div>
+        {{end}}
+
         <div id="haproxyPortsContainer" class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
             <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
                 <h2 class="text-xl font-semibold text-gray-900 dark:text-white">HAProxy PGSQL Connection Ports</h2>
@@ -278,6 +313,17 @@
                             const iframe = pmmContainer.querySelector('iframe');
                             if (iframe) {
                                 iframe.src = data.PMMURL;
+                            }
+                        }
+                    }
+
+                    // Update Query Analytics iframe if it exists
+                    if (data.QueryIframeURL) {
+                        const queryAnalyticsContainer = document.getElementById('queryAnalyticsContainer');
+                        if (queryAnalyticsContainer) {
+                            const iframe = queryAnalyticsContainer.querySelector('iframe');
+                            if (iframe) {
+                                iframe.src = data.QueryIframeURL;
                             }
                         }
                     }
