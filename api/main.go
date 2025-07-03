@@ -21,6 +21,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Global config variable to access ignore users setting
+var globalConfig *Config
+
 // PostgreSQLServer represents a Patroni-managed PostgreSQL cluster configuration
 type PostgreSQLServer struct {
 	Name     string `yaml:"name"`
@@ -52,11 +55,11 @@ type Config struct {
 	Databases []string `yaml:"databases"`
 	LogFile   string   `yaml:"log_file"`
 
-	// PMM iframe URL for the status page
-	PMMIframeURL string `yaml:"pmm_iframe"`
+	// PMM status iframe URL for the status page
+	PMMStatusURL string `yaml:"pmm_status_url"`
 
 	// Query Analytics iframe URL
-	QueryIframeURL string `yaml:"query_iframe"`
+	PMMQanURL string `yaml:"pmm_qan_url"`
 
 	// HAProxy port badges
 	Ports []HAProxyPort `yaml:"ports"`
@@ -66,6 +69,9 @@ type Config struct {
 
 	// Refresh intervals (in seconds)
 	BadgeRefreshInterval int `yaml:"badge_refresh_interval"`
+
+	// Users to ignore in active queries view
+	IgnoreUsers []string `yaml:"ignore_users"`
 }
 
 // PatroniMember represents a member in the Patroni cluster
@@ -86,10 +92,14 @@ type PatroniCluster struct {
 	Sync    []string        `json:"sync_standby"`
 }
 
-// BackendConn represents a connection to a specific backend with its PID
+// BackendConn represents a connection to a specific backend with its PID and Patroni member info
 type BackendConn struct {
-	DB  *sql.DB
-	PID int
+	DB         *sql.DB
+	PID        int
+	MemberName string // Patroni member name
+	Host       string // Member host
+	Port       int    // Member port
+	Role       string // Member role (leader, replica, etc.)
 }
 
 // ConnectionManager manages database connections to multiple PostgreSQL servers
@@ -258,7 +268,7 @@ func (cm *ConnectionManager) establishPatroniConnection(serverName string) (*sql
 			continue
 		}
 
-		backend := BackendConn{DB: db, PID: pid}
+		backend := BackendConn{DB: db, PID: pid, MemberName: member.Name, Host: member.Host, Port: member.Port, Role: member.Role}
 		backends = append(backends, backend)
 
 		if member.Role == "leader" {
@@ -413,8 +423,8 @@ type PageData struct {
 	Databases            []string
 	HAPorts              []HAProxyPort
 	Services             []Service
-	PMMURL               string
-	QueryIframeURL       string
+	PMMStatusURL         string
+	PMMQanURL            string
 	BadgeRefreshInterval int
 }
 
@@ -465,6 +475,20 @@ func getTemplatesDir(configuredPath string) string {
 	return filepath.Join(filepath.Dir(basepath), "templates", "*")
 }
 
+// buildUserFilterClause creates a SQL WHERE clause to filter out ignored users
+func buildUserFilterClause() string {
+	if globalConfig == nil || len(globalConfig.IgnoreUsers) == 0 {
+		return ""
+	}
+
+	var filters []string
+	for _, user := range globalConfig.IgnoreUsers {
+		filters = append(filters, fmt.Sprintf("usename != '%s'", strings.ReplaceAll(user, "'", "''")))
+	}
+
+	return "AND " + strings.Join(filters, " AND ")
+}
+
 // loadConfig loads the main configuration file including servers and other settings
 func loadConfig(configPath string) (*Config, error) {
 	data, err := os.ReadFile(configPath)
@@ -485,9 +509,9 @@ func loadHAProxyConfig(configPath string) ([]HAProxyPort, []Service, string, int
 	type Config struct {
 		Ports                []HAProxyPort `yaml:"ports"`
 		Services             []Service     `yaml:"services"`
-		PMMURL               string        `yaml:"pmm_url"`
+		PMMStatusURL         string        `yaml:"pmm_status_url"`
 		BadgeRefreshInterval int           `yaml:"badge_refresh_interval"`
-		QueryIframeURL       string        `yaml:"query_iframe"`
+		PMMQanURL            string        `yaml:"pmm_qan_url"`
 	}
 
 	data, err := os.ReadFile(configPath)
@@ -500,7 +524,7 @@ func loadHAProxyConfig(configPath string) ([]HAProxyPort, []Service, string, int
 		return nil, nil, "", 0, "", err
 	}
 
-	return config.Ports, config.Services, config.PMMURL, config.BadgeRefreshInterval, config.QueryIframeURL, nil
+	return config.Ports, config.Services, config.PMMStatusURL, config.BadgeRefreshInterval, config.PMMQanURL, nil
 }
 
 // Update this function before InitServer
@@ -552,12 +576,16 @@ func InitServer() {
 		}
 
 		config = *loadedConfig
+		globalConfig = &config // Set global config for use in helper functions
 		if len(config.Servers) == 0 {
 			log.Fatal("No servers configured in config file")
 		}
 
 		servers = config.Servers
 		log.Printf("Configured %d PostgreSQL servers", len(servers))
+		if len(config.IgnoreUsers) > 0 {
+			log.Printf("Configured to ignore %d users in active queries: %v", len(config.IgnoreUsers), config.IgnoreUsers)
+		}
 	} else {
 		log.Fatal("Configuration file is required - single server mode is not supported. Please use -config flag with a Patroni cluster configuration.")
 	}
@@ -595,8 +623,8 @@ func InitServer() {
 
 	if configPath != "" {
 		// Use values from loaded config
-		pmmURL = config.PMMIframeURL
-		queryIframeURL = config.QueryIframeURL
+		pmmURL = config.PMMStatusURL
+		queryIframeURL = config.PMMQanURL
 		badgeRefreshInterval = config.BadgeRefreshInterval
 		if badgeRefreshInterval == 0 {
 			badgeRefreshInterval = 3000
@@ -623,8 +651,8 @@ func InitServer() {
 			badgeRefreshInterval = 3000
 		}
 		// Set the values in config struct
-		config.QueryIframeURL = queryIframeURL
-		config.PMMIframeURL = pmmURL
+		config.PMMQanURL = queryIframeURL
+		config.PMMStatusURL = pmmURL
 	}
 
 	// Add this route after the existing routes
@@ -685,8 +713,8 @@ func InitServer() {
 			"ServerStatuses":       serverStatuses,
 			"HAPorts":              haPorts,
 			"Services":             services,
-			"PMMURL":               pmmURL,
-			"QueryIframeURL":       queryIframeURL,
+			"PMMStatusURL":         pmmURL,
+			"PMMQanURL":            queryIframeURL,
 			"BadgeRefreshInterval": badgeRefreshInterval,
 		})
 	})
@@ -862,8 +890,8 @@ func InitServer() {
 			Databases:            allDatabases,
 			HAPorts:              haPorts,
 			Services:             services,
-			PMMURL:               pmmURL,
-			QueryIframeURL:       queryIframeURL,
+			PMMStatusURL:         pmmURL,
+			PMMQanURL:            queryIframeURL,
 			BadgeRefreshInterval: badgeRefreshInterval,
 		})
 	})
@@ -876,6 +904,33 @@ func InitServer() {
 			c.JSON(200, gin.H{
 				"servers": servers,
 			})
+		})
+
+		// Add dedicated status endpoint for lightweight status data refresh
+		v1.GET("/status", func(c *gin.Context) {
+			// Add cache headers to prevent unnecessary requests
+			c.Header("Cache-Control", "no-cache, must-revalidate")
+			c.Header("Last-Modified", time.Now().UTC().Format(time.RFC1123))
+
+			statusData := gin.H{
+				"HAPorts":              haPorts,
+				"Services":             services,
+				"PMMStatusURL":         config.PMMStatusURL,
+				"PMMQanURL":            config.PMMQanURL,
+				"BadgeRefreshInterval": config.BadgeRefreshInterval,
+				"ServerTime":           time.Now().Unix(),
+				"Version":              "1.0", // For API versioning
+			}
+
+			// Add timing for performance monitoring
+			start := time.Now()
+			defer func() {
+				duration := time.Since(start)
+				log.Printf("Status endpoint served in %v: %d ports, %d services",
+					duration, len(haPorts), len(services))
+			}()
+
+			c.JSON(200, statusData)
 		})
 
 		v1.GET("/users", func(c *gin.Context) {
@@ -1049,8 +1104,8 @@ func InitServer() {
 				Databases:            allDatabases,
 				HAPorts:              haPorts,
 				Services:             services,
-				PMMURL:               pmmURL,
-				QueryIframeURL:       queryIframeURL,
+				PMMStatusURL:         pmmURL,
+				PMMQanURL:            queryIframeURL,
 				BadgeRefreshInterval: badgeRefreshInterval,
 			})
 		})
@@ -1302,6 +1357,10 @@ func InitServer() {
 				Query
 				Server     string `json:"server"`
 				BackendPID int    `json:"backend_pid"`
+				MemberName string `json:"member_name"`
+				MemberHost string `json:"member_host"`
+				MemberPort int    `json:"member_port"`
+				MemberRole string `json:"member_role"`
 			}
 
 			var allQueries []QueryWithServer
@@ -1314,19 +1373,23 @@ func InitServer() {
 				}
 
 				for _, backend := range backends {
-					rows, err := backend.DB.Query(`
+					userFilter := buildUserFilterClause()
+					querySQL := fmt.Sprintf(`
 						SELECT
 							pid,
 							usename,
 							COALESCE(datname, 'system') as datname,
-							EXTRACT(EPOCH FROM now() - query_start)::text || 's' as duration,
+							ROUND(EXTRACT(EPOCH FROM now() - query_start))::text || 's' as duration,
 							query
 						FROM pg_stat_activity
 						WHERE state = 'active'
-						AND query NOT ILIKE '%pg_stat_activity%'
+						AND query NOT ILIKE '%%pg_stat_activity%%'
 						AND pid != pg_backend_pid()
+						%s
 						ORDER BY query_start DESC
-					`)
+					`, userFilter)
+
+					rows, err := backend.DB.Query(querySQL)
 
 					if err != nil {
 						log.Printf("Error querying active queries from server %s backend PID %d: %v", server.Name, backend.PID, err)
@@ -1348,6 +1411,10 @@ func InitServer() {
 							Query:      q,
 							Server:     server.Name,
 							BackendPID: backend.PID,
+							MemberName: backend.MemberName,
+							MemberHost: backend.Host,
+							MemberPort: backend.Port,
+							MemberRole: backend.Role,
 						}
 						allQueries = append(allQueries, qWithServer)
 					}
@@ -1427,6 +1494,10 @@ func InitServer() {
 			Query
 			Server     string `json:"server"`
 			BackendPID int    `json:"backend_pid"`
+			MemberName string `json:"member_name"`
+			MemberHost string `json:"member_host"`
+			MemberPort int    `json:"member_port"`
+			MemberRole string `json:"member_role"`
 		}
 
 		var allQueries []QueryWithServer
@@ -1439,19 +1510,23 @@ func InitServer() {
 			}
 
 			for _, backend := range backends {
-				rows, err := backend.DB.Query(`
+				userFilter := buildUserFilterClause()
+				querySQL := fmt.Sprintf(`
 					SELECT
 						pid,
 						usename,
 						COALESCE(datname, 'system') as datname,
-						EXTRACT(EPOCH FROM now() - query_start)::text || 's' as duration,
+						ROUND(EXTRACT(EPOCH FROM now() - query_start))::text || 's' as duration,
 						query
 					FROM pg_stat_activity
 					WHERE state = 'active'
-					AND query NOT ILIKE '%pg_stat_activity%'
+					AND query NOT ILIKE '%%pg_stat_activity%%'
 					AND pid != pg_backend_pid()
+					%s
 					ORDER BY query_start DESC
-				`)
+				`, userFilter)
+
+				rows, err := backend.DB.Query(querySQL)
 				if err != nil {
 					log.Printf("Error querying active queries from server %s backend PID %d: %v", server.Name, backend.PID, err)
 					continue
@@ -1472,6 +1547,10 @@ func InitServer() {
 						Query:      q,
 						Server:     server.Name,
 						BackendPID: backend.PID,
+						MemberName: backend.MemberName,
+						MemberHost: backend.Host,
+						MemberPort: backend.Port,
+						MemberRole: backend.Role,
 					}
 					allQueries = append(allQueries, qWithServer)
 				}
@@ -1488,8 +1567,8 @@ func InitServer() {
 	// Add route handler for query analytics page
 	router.GET("/query-analytics", func(c *gin.Context) {
 		c.HTML(200, "query_analytics.html", gin.H{
-			"Servers":        servers,
-			"QueryIframeURL": config.QueryIframeURL,
+			"Servers":   servers,
+			"PMMQanURL": config.PMMQanURL,
 		})
 	})
 

@@ -21,7 +21,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
                     </svg>
                 </button>
-                <button id="refreshBtn" onclick="refreshComponents()" class="rounded-lg p-2.5 hover:bg-gray-200 dark:hover:bg-gray-700">
+                <button id="refreshBtn" onclick="refreshStatusBadges()" class="rounded-lg p-2.5 hover:bg-gray-200 dark:hover:bg-gray-700">
                     <!-- Refresh icon -->
                     <svg class="w-6 h-6 text-gray-800 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -42,7 +42,7 @@
             </div>
         </div>
 
-        {{if .PMMURL}}
+        {{if .PMMStatusURL}}
         <div id="pmmContainer" class="mb-8 bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
             <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
                 <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Cluster Status</h2>
@@ -67,47 +67,12 @@
             <div class="w-full iframe-container">
                 <iframe
                     id="pmmIframe"
-                    src="{{.PMMURL}}"
+                    src="{{.PMMStatusURL}}"
                     class="w-full border-0 resize-y"
                     style="min-height: 340px; height: 340px;"
                     allow="fullscreen">
                 </iframe>
                 <div class="resize-handle" onmousedown="initResize('pmmIframe', event)"></div>
-            </div>
-        </div>
-        {{end}}
-
-        {{if .QueryIframeURL}}
-        <div id="queryAnalyticsContainer" class="mb-8 bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-                <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Query Performance Analysis</h2>
-                <div class="flex items-center space-x-2">
-                    <button onclick="adjustIframeHeight('queryAnalyticsIframe', 150)" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-                        </svg>
-                    </button>
-                    <button onclick="adjustIframeHeight('queryAnalyticsIframe', -150)" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
-                        </svg>
-                    </button>
-                    <button onclick="toggleFullscreen('queryAnalyticsIframe')" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" />
-                        </svg>
-                    </button>
-                </div>
-            </div>
-            <div class="w-full iframe-container">
-                <iframe
-                    id="queryAnalyticsIframe"
-                    src="{{.QueryIframeURL}}"
-                    class="w-full border-0 resize-y"
-                    style="min-height: 500px; height: 500px;"
-                    allow="fullscreen">
-                </iframe>
-                <div class="resize-handle" onmousedown="initResize('queryAnalyticsIframe', event)"></div>
             </div>
         </div>
         {{end}}
@@ -265,76 +230,71 @@
             `;
         }
 
-        // Function to refresh components
-        function refreshComponents() {
-            const refreshBtn = document.getElementById('refreshBtn');
-            // Show loading state
-            refreshBtn.classList.add('animate-spin');
+        // Refresh statistics tracking
+        let refreshStats = {
+            successful: 0,
+            failed: 0,
+            lastSuccess: null,
+            lastError: null
+        };
 
-            fetch('/api/v1/users')
-                .then(response => response.json())
-                .then(data => {
-                    // Update HAProxy ports table
-                    const haPortsTable = document.getElementById('haproxyPortsTable');
-                    if (haPortsTable && Array.isArray(data.HAPorts)) {
-                        let portRows = '';
-                        for (const port of data.HAPorts) {
-                            if (port && typeof port === 'object') {
-                                portRows += createHAPortRow(port);
-                            }
-                        }
-                        if (portRows) {
-                            haPortsTable.innerHTML = portRows;
-                            // Re-apply badge styles to new images
-                            applyBadgeStyle();
-                        }
-                    }
 
-                    // Update Services table
-                    const servicesTable = document.getElementById('servicesTable');
-                    if (servicesTable && Array.isArray(data.Services)) {
-                        let serviceRows = '';
-                        for (const service of data.Services) {
-                            if (service && typeof service === 'object') {
-                                serviceRows += createServiceRow(service);
-                            }
-                        }
-                        if (serviceRows) {
-                            servicesTable.innerHTML = serviceRows;
-                            // Re-apply badge styles to new images
-                            applyBadgeStyle();
-                        }
-                    }
+        // Separate function for updating HAProxy table
+        function updateHAProxyTable(ports) {
+            const table = document.getElementById('haproxyPortsTable');
+            if (!table || !Array.isArray(ports)) {
+                console.warn('HAProxy table not found or invalid ports data');
+                return;
+            }
 
-                    // Update PMM iframe if it exists
-                    if (data.PMMURL) {
-                        const pmmContainer = document.getElementById('pmmContainer');
-                        if (pmmContainer) {
-                            const iframe = pmmContainer.querySelector('iframe');
-                            if (iframe) {
-                                iframe.src = data.PMMURL;
-                            }
-                        }
-                    }
+            let html = '';
+            ports.forEach(port => {
+                if (port && typeof port === 'object') {
+                    html += createHAPortRow(port);
+                }
+            });
+            
+            table.innerHTML = html;
+            applyBadgeStyle(); // Re-apply styling to new images
+        }
 
-                    // Update Query Analytics iframe if it exists
-                    if (data.QueryIframeURL) {
-                        const queryAnalyticsContainer = document.getElementById('queryAnalyticsContainer');
-                        if (queryAnalyticsContainer) {
-                            const iframe = queryAnalyticsContainer.querySelector('iframe');
-                            if (iframe) {
-                                iframe.src = data.QueryIframeURL;
-                            }
-                        }
+        // Separate function for updating Services table
+        function updateServicesTable(services) {
+            const table = document.getElementById('servicesTable');
+            if (!table || !Array.isArray(services)) {
+                console.warn('Services table not found or invalid services data');
+                return;
+            }
+
+            let html = '';
+            services.forEach(service => {
+                if (service && typeof service === 'object') {
+                    html += createServiceRow(service);
+                }
+            });
+            
+            table.innerHTML = html;
+            applyBadgeStyle(); // Re-apply styling to new images
+        }
+
+        // Add error message display
+        function showErrorMessage(message) {
+            // Create a temporary error banner
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4';
+            errorDiv.textContent = message;
+            
+            const container = document.querySelector('.max-w-7xl');
+            if (container && container.firstChild) {
+                container.insertBefore(errorDiv, container.firstChild);
+                
+                // Remove after 5 seconds
+                setTimeout(() => {
+                    if (errorDiv.parentNode) {
+                        errorDiv.parentNode.removeChild(errorDiv);
                     }
-                })
-                .catch(error => {
-                    console.error('Error refreshing components:', error);
-                })
-                .finally(() => {
-                    // Remove loading state
-                    refreshBtn.classList.remove('animate-spin');
-                });
+                }, 5000);
+            }
         }
 
         // Function to refresh only status badge images
@@ -398,16 +358,63 @@
             });
         }
 
-        // Set up component refresh interval
-        let autoRefreshInterval = setInterval(refreshComponents, "{{if .ComponentRefreshInterval }}{{.ComponentRefreshInterval}}000{{else}}30000{{end}}");
+        // Refresh interval management
+        let badgeRefreshInterval;
 
-        // Set up status badge refresh interval
-        let badgeRefreshInterval = setInterval(refreshStatusBadges, "{{if .BadgeRefreshInterval }}{{.BadgeRefreshInterval}}000{{else}}3000{{end}}");
+        function setupRefreshIntervals() {
+            // Clear existing intervals
+            if (badgeRefreshInterval) clearInterval(badgeRefreshInterval);
+            
+            // Badge image refresh only (every 30 seconds as configured)
+            badgeRefreshInterval = setInterval(() => {
+                console.log('Performing scheduled badge refresh...');
+                refreshStatusBadges();
+            }, 30000);
+        }
+
+        // Add debug panel (optional, enable with localStorage.setItem('statusDebug', 'true'))
+        function addDebugPanel() {
+            if (localStorage.getItem('statusDebug') === 'true') {
+                const debugPanel = document.createElement('div');
+                debugPanel.style.cssText = 'position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.8);color:white;padding:10px;font-size:12px;z-index:9999;border-radius:5px;';
+                debugPanel.innerHTML = `
+                    <div><strong>Status Refresh Debug</strong></div>
+                    <div>Success: <span id="debug-success">0</span></div>
+                    <div>Failed: <span id="debug-failed">0</span></div>
+                    <div>Last: <span id="debug-last">-</span></div>
+                    <div>Endpoint: /api/v1/status</div>
+                    <button onclick="refreshStatusBadges()" style="margin-top:5px;padding:2px 5px;">Manual Refresh</button>
+                `;
+                document.body.appendChild(debugPanel);
+                
+                // Update debug panel periodically
+                setInterval(() => {
+                    document.getElementById('debug-success').textContent = refreshStats.successful;
+                    document.getElementById('debug-failed').textContent = refreshStats.failed;
+                    document.getElementById('debug-last').textContent = refreshStats.lastSuccess ? 
+                        new Date(refreshStats.lastSuccess).toLocaleTimeString() : '-';
+                }, 1000);
+                
+                console.log('Status debug panel enabled. Disable with: localStorage.removeItem("statusDebug")');
+            }
+        }
 
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', () => {
             // Apply badge style and store original URLs
             applyBadgeStyle();
+            
+            // Setup refresh intervals
+            setupRefreshIntervals();
+            
+            // Add retry logic for failed refreshes
+            window.addEventListener('online', () => {
+                console.log('Network back online, refreshing components...');
+                refreshComponents();
+            });
+            
+            // Add debug panel if enabled
+            addDebugPanel();
         });
 
         // Function to adjust iframe height by the specified amount
