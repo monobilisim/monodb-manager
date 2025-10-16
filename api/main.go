@@ -1375,7 +1375,7 @@ func InitServer() {
 				for _, backend := range backends {
 					userFilter := buildUserFilterClause()
 					querySQL := fmt.Sprintf(`
-						SELECT
+						SELECT DISTINCT ON (usename, query)
 							pid,
 							usename,
 							COALESCE(datname, 'system') as datname,
@@ -1383,10 +1383,10 @@ func InitServer() {
 							query
 						FROM pg_stat_activity
 						WHERE state = 'active'
-						AND query NOT ILIKE '%%pg_stat_activity%%'
+						AND query NOT ILIKE '%%%%pg_stat_activity%%%%'
 						AND pid != pg_backend_pid()
 						%s
-						ORDER BY query_start DESC
+						ORDER BY usename, query, query_start ASC
 					`, userFilter)
 
 					rows, err := backend.DB.Query(querySQL)
@@ -1512,7 +1512,7 @@ func InitServer() {
 			for _, backend := range backends {
 				userFilter := buildUserFilterClause()
 				querySQL := fmt.Sprintf(`
-					SELECT
+					SELECT DISTINCT ON (usename, query)
 						pid,
 						usename,
 						COALESCE(datname, 'system') as datname,
@@ -1520,10 +1520,10 @@ func InitServer() {
 						query
 					FROM pg_stat_activity
 					WHERE state = 'active'
-					AND query NOT ILIKE '%%pg_stat_activity%%'
+					AND query NOT ILIKE '%%%%pg_stat_activity%%%%'
 					AND pid != pg_backend_pid()
 					%s
-					ORDER BY query_start DESC
+					ORDER BY usename, query, query_start ASC
 				`, userFilter)
 
 				rows, err := backend.DB.Query(querySQL)
