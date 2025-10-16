@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/monobilisim/PGUserManager/api"
+	"github.com/monobilisim/PGClusterManager/api"
 )
 
 func main() {

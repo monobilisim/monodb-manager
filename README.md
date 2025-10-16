@@ -1,1 +1,1 @@
-# PGUserManager
+# PGClusterManager
