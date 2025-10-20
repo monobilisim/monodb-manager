@@ -1375,18 +1375,18 @@ func InitServer() {
 				for _, backend := range backends {
 					userFilter := buildUserFilterClause()
 					querySQL := fmt.Sprintf(`
-						SELECT DISTINCT ON (usename, query)
-							pid,
+						SELECT DISTINCT ON (COALESCE(leader_pid, pid))
+							COALESCE(leader_pid, pid) AS pid,
 							usename,
-							COALESCE(datname, 'system') as datname,
-							ROUND(EXTRACT(EPOCH FROM now() - query_start))::text || 's' as duration,
-							query
+						COALESCE(datname, 'system') as datname,
+						ROUND(EXTRACT(EPOCH FROM now() - query_start))::text || 's' as duration,
+						query
 						FROM pg_stat_activity
 						WHERE state = 'active'
-						AND query NOT ILIKE '%%%%pg_stat_activity%%%%'
+						AND query NOT ILIKE '%%pg_stat_activity%%'
 						AND pid != pg_backend_pid()
 						%s
-						ORDER BY usename, query, query_start ASC
+						ORDER BY pid, query_start ASC;
 					`, userFilter)
 
 					rows, err := backend.DB.Query(querySQL)
@@ -1512,18 +1512,18 @@ func InitServer() {
 			for _, backend := range backends {
 				userFilter := buildUserFilterClause()
 				querySQL := fmt.Sprintf(`
-					SELECT DISTINCT ON (usename, query)
-						pid,
-						usename,
+						SELECT DISTINCT ON (COALESCE(leader_pid, pid))
+							COALESCE(leader_pid, pid) AS pid,
+							usename,
 						COALESCE(datname, 'system') as datname,
 						ROUND(EXTRACT(EPOCH FROM now() - query_start))::text || 's' as duration,
 						query
-					FROM pg_stat_activity
-					WHERE state = 'active'
-					AND query NOT ILIKE '%%%%pg_stat_activity%%%%'
-					AND pid != pg_backend_pid()
-					%s
-					ORDER BY usename, query, query_start ASC
+						FROM pg_stat_activity
+						WHERE state = 'active'
+						AND query NOT ILIKE '%%pg_stat_activity%%'
+						AND pid != pg_backend_pid()
+						%s
+						ORDER BY pid, query_start ASC;
 				`, userFilter)
 
 				rows, err := backend.DB.Query(querySQL)
