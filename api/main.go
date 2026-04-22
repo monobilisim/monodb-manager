@@ -1451,9 +1451,8 @@ func InitServer() {
 							log.Printf("Error scanning query row from server %s backend PID %d: %v", server.Name, backend.PID, err)
 							continue
 						}
-						// Add server information to identify where the query is running
-						q.Username = fmt.Sprintf("%s@%s", q.Username, server.Name)
-						q.Database = fmt.Sprintf("%s@%s", q.Database, server.Name)
+						// Server identity is carried in QueryWithServer.Server below;
+						// don't pollute the displayed username/database with a suffix.
 
 						qWithServer := QueryWithServer{
 							Query:      q,
@@ -1587,9 +1586,8 @@ func InitServer() {
 						log.Printf("Error scanning query row from server %s backend PID %d: %v", server.Name, backend.PID, err)
 						continue
 					}
-					// Add server information to identify where the query is running
-					q.Username = fmt.Sprintf("%s@%s", q.Username, server.Name)
-					q.Database = fmt.Sprintf("%s@%s", q.Database, server.Name)
+					// Server identity is carried in QueryWithServer.Server below;
+					// don't pollute the displayed username/database with a suffix.
 
 					qWithServer := QueryWithServer{
 						Query:      q,
