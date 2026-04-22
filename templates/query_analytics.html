@@ -114,7 +114,7 @@
             <div class="w-full iframe-container bg-gray-50 dark:bg-gray-950">
                 <iframe
                     id="queryAnalyticsIframe"
-                    src="{{.PMMQanURL | pmmEmbedURL}}"
+                    data-base-src="{{.PMMQanURL | pmmEmbedURL}}"
                     class="w-full border-0 resize-y"
                     style="min-height: 600px; height: 600px;"
                     allow="fullscreen">
@@ -152,9 +152,33 @@
         // Check for dark mode preference on load
         document.documentElement.classList.toggle('dark', localStorage.getItem('darkMode') === 'true');
 
+        // Sync embedded Grafana iframes to the current light/dark theme by
+        // injecting ?theme=light|dark into the iframe URL. Initial src is set
+        // here (data-base-src carries the clean URL) so the iframe never has
+        // to load with the wrong theme and then reload.
+        function applyGrafanaTheme() {
+            const isDark = document.documentElement.classList.contains('dark');
+            const theme = isDark ? 'dark' : 'light';
+            document.querySelectorAll('iframe[data-base-src]').forEach(iframe => {
+                try {
+                    const u = new URL(iframe.dataset.baseSrc);
+                    u.searchParams.set('theme', theme);
+                    const newSrc = u.toString();
+                    if (iframe.src !== newSrc) {
+                        iframe.src = newSrc;
+                    }
+                } catch (e) {
+                    console.warn('Invalid Grafana iframe URL:', iframe.dataset.baseSrc, e);
+                }
+            });
+        }
+        // Populate iframe src with the initial theme as soon as the DOM is ready.
+        document.addEventListener('DOMContentLoaded', applyGrafanaTheme);
+
         function toggleDarkMode() {
             const isDark = document.documentElement.classList.toggle('dark');
             localStorage.setItem('darkMode', isDark);
+            applyGrafanaTheme();
         }
         
         // Function to adjust iframe height by the specified amount
