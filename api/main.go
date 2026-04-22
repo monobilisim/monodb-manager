@@ -592,6 +592,248 @@ func pmmOpenURL(raw string) string {
 	return u.String()
 }
 
+// aggregateUsers queries all configured servers and returns users with their
+// verified database access list plus the union of all databases (both in
+// "db@server" compound format). Per-database table-privilege verification is
+// done in parallel with a bounded worker pool (one connection per unique DB
+// per server instead of one per (user, db) pair).
+func aggregateUsers(cm *ConnectionManager, servers []PostgreSQLServer) ([]User, []string) {
+	var allUsers []User
+	databaseSet := make(map[string]bool)
+	var dbSetMu sync.Mutex
+
+	for _, server := range servers {
+		db, err := cm.GetConnection(server.Name)
+		if err != nil {
+			log.Printf("Error connecting to server %s: %v", server.Name, err)
+			continue
+		}
+
+		// Fetch user list
+		rows, err := db.Query(`
+			SELECT
+				usename,
+				usesuper,
+				usecreatedb,
+				r.rolcreaterole,
+				valuntil
+			FROM pg_user u
+			JOIN pg_roles r ON u.usename = r.rolname
+			ORDER BY usename
+		`)
+		if err != nil {
+			log.Printf("Error querying users from server %s: %v", server.Name, err)
+			continue
+		}
+
+		type pendingUser struct {
+			user       User
+			origName   string
+			candidates []string // only populated for non-superusers
+		}
+		var pending []pendingUser
+
+		for rows.Next() {
+			var user User
+			if err := rows.Scan(
+				&user.Username,
+				&user.Superuser,
+				&user.CreateDB,
+				&user.CreateRole,
+				&user.ValidUntil,
+			); err != nil {
+				log.Printf("Error scanning user row from server %s: %v", server.Name, err)
+				continue
+			}
+
+			originalUsername := user.Username
+			user.Username = fmt.Sprintf("%s@%s", user.Username, server.Name)
+
+			if user.Superuser || originalUsername == "postgres" {
+				// Superusers / postgres see all non-template databases.
+				dbRows, err := db.Query(`
+					SELECT datname
+					FROM pg_database
+					WHERE datistemplate = false
+					ORDER BY datname
+				`)
+				if err == nil {
+					for dbRows.Next() {
+						var dbName string
+						if err := dbRows.Scan(&dbName); err == nil {
+							qualifiedDBName := fmt.Sprintf("%s@%s", dbName, server.Name)
+							user.Databases = append(user.Databases, qualifiedDBName)
+							databaseSet[qualifiedDBName] = true
+						}
+					}
+					dbRows.Close()
+				}
+				pending = append(pending, pendingUser{user: user, origName: originalUsername})
+			} else {
+				// Regular user: candidate DBs are those with CONNECT privilege.
+				dbRows, err := db.Query(`
+					SELECT d.datname
+					FROM pg_database d
+					WHERE d.datistemplate = false
+					AND has_database_privilege($1, d.datname, 'CONNECT')
+					ORDER BY d.datname
+				`, originalUsername)
+				var candidates []string
+				if err == nil {
+					for dbRows.Next() {
+						var dbName string
+						if err := dbRows.Scan(&dbName); err == nil {
+							candidates = append(candidates, dbName)
+						}
+					}
+					dbRows.Close()
+				}
+				pending = append(pending, pendingUser{
+					user:       user,
+					origName:   originalUsername,
+					candidates: candidates,
+				})
+			}
+		}
+		rows.Close()
+
+		// Collect the unique DB names we need to probe (public-schema table grantees).
+		uniqueDBs := make(map[string]struct{})
+		for _, p := range pending {
+			if p.user.Superuser || p.origName == "postgres" {
+				continue
+			}
+			for _, dbName := range p.candidates {
+				uniqueDBs[dbName] = struct{}{}
+			}
+		}
+
+		// Resolve leader connection details ONCE per server (was: per user-db pair).
+		var (
+			leaderHost    string
+			leaderPort    int
+			leaderErr     error
+			leaderFetched bool
+		)
+		if len(uniqueDBs) > 0 {
+			leaderHost, leaderPort, leaderErr = cm.getLeaderConnectionDetails(server.Name)
+			leaderFetched = true
+			if leaderErr != nil {
+				log.Printf("Error getting leader connection details for %s: %v", server.Name, leaderErr)
+			}
+		}
+
+		// Probe each unique DB in parallel with a bounded worker pool.
+		granteesByDB := make(map[string]map[string]bool)
+		var granteesMu sync.Mutex
+
+		if leaderFetched && leaderErr == nil {
+			var wg sync.WaitGroup
+			sem := make(chan struct{}, 8)
+
+			for dbName := range uniqueDBs {
+				wg.Add(1)
+				sem <- struct{}{}
+				go func(dbName string) {
+					defer wg.Done()
+					defer func() { <-sem }()
+
+					dbConnStr := fmt.Sprintf(
+						"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+						leaderHost,
+						leaderPort,
+						server.User,
+						server.Password,
+						dbName,
+						server.SSLMode,
+					)
+
+					dbConn, err := sql.Open("postgres", dbConnStr)
+					if err != nil {
+						log.Printf("Error opening connection to %s/%s: %v", server.Name, dbName, err)
+						return
+					}
+					defer dbConn.Close()
+
+					granteeRows, err := dbConn.Query(`
+						SELECT DISTINCT grantee
+						FROM information_schema.table_privileges
+						WHERE table_schema = 'public'
+					`)
+					if err != nil {
+						log.Printf("Error querying grantees for %s/%s: %v", server.Name, dbName, err)
+						return
+					}
+					defer granteeRows.Close()
+
+					set := make(map[string]bool)
+					for granteeRows.Next() {
+						var grantee string
+						if err := granteeRows.Scan(&grantee); err == nil {
+							set[grantee] = true
+						}
+					}
+
+					granteesMu.Lock()
+					granteesByDB[dbName] = set
+					granteesMu.Unlock()
+				}(dbName)
+			}
+
+			wg.Wait()
+		}
+
+		// Assemble final user entries using the grantees map.
+		for _, p := range pending {
+			if p.user.Superuser || p.origName == "postgres" {
+				allUsers = append(allUsers, p.user)
+				continue
+			}
+			for _, dbName := range p.candidates {
+				set, ok := granteesByDB[dbName]
+				if !ok {
+					continue
+				}
+				if set[p.origName] {
+					qualifiedDBName := fmt.Sprintf("%s@%s", dbName, server.Name)
+					p.user.Databases = append(p.user.Databases, qualifiedDBName)
+					dbSetMu.Lock()
+					databaseSet[qualifiedDBName] = true
+					dbSetMu.Unlock()
+				}
+			}
+			allUsers = append(allUsers, p.user)
+		}
+
+		// Populate the create-user form's database list with all non-template,
+		// non-'postgres' databases for this server.
+		dbRows, err := db.Query(`
+			SELECT datname
+			FROM pg_database
+			WHERE datistemplate = false
+			AND datname != 'postgres'
+			ORDER BY datname
+		`)
+		if err == nil {
+			for dbRows.Next() {
+				var dbName string
+				if err := dbRows.Scan(&dbName); err == nil {
+					qualifiedDBName := fmt.Sprintf("%s@%s", dbName, server.Name)
+					databaseSet[qualifiedDBName] = true
+				}
+			}
+			dbRows.Close()
+		}
+	}
+
+	allDatabases := make([]string, 0, len(databaseSet))
+	for dbName := range databaseSet {
+		allDatabases = append(allDatabases, dbName)
+	}
+
+	return allUsers, allDatabases
+}
+
 func InitServer() {
 	// Define command line flags
 	var config Config
@@ -786,169 +1028,7 @@ func InitServer() {
 	})
 
 	router.GET("/users", func(c *gin.Context) {
-		// Aggregate users from all servers
-		var allUsers []User
-		var allDatabases []string
-		databaseSet := make(map[string]bool)
-
-		for _, server := range servers {
-			db, err := connectionManager.GetConnection(server.Name)
-			if err != nil {
-				log.Printf("Error connecting to server %s: %v", server.Name, err)
-				continue
-			}
-
-			// Get users from this server
-			rows, err := db.Query(`
-				SELECT
-					usename,
-					usesuper,
-					usecreatedb,
-					r.rolcreaterole,
-					valuntil
-				FROM pg_user u
-				JOIN pg_roles r ON u.usename = r.rolname
-				ORDER BY usename
-			`)
-			if err != nil {
-				log.Printf("Error querying users from server %s: %v", server.Name, err)
-				continue
-			}
-			defer rows.Close()
-
-			for rows.Next() {
-				var user User
-				err := rows.Scan(
-					&user.Username,
-					&user.Superuser,
-					&user.CreateDB,
-					&user.CreateRole,
-					&user.ValidUntil,
-				)
-				if err != nil {
-					log.Printf("Error scanning user row from server %s: %v", server.Name, err)
-					continue
-				}
-
-				// Add server name to username for identification
-				user.Username = fmt.Sprintf("%s@%s", user.Username, server.Name)
-
-				// Get database access for this user
-				originalUsername := strings.Split(user.Username, "@")[0]
-				if user.Superuser || originalUsername == "postgres" {
-					// Superusers and postgres user have access to all databases
-					dbRows, err := db.Query(`
-						SELECT datname
-						FROM pg_database
-						WHERE datistemplate = false
-						ORDER BY datname
-					`)
-					if err == nil {
-						defer dbRows.Close()
-						for dbRows.Next() {
-							var dbName string
-							if err := dbRows.Scan(&dbName); err == nil {
-								qualifiedDBName := fmt.Sprintf("%s@%s", dbName, server.Name)
-								user.Databases = append(user.Databases, qualifiedDBName)
-								databaseSet[qualifiedDBName] = true
-							}
-						}
-					}
-				} else {
-					// For regular users, check specific grants
-					dbRows, err := db.Query(`
-						SELECT d.datname
-						FROM pg_database d
-						WHERE d.datistemplate = false
-						AND has_database_privilege($1, d.datname, 'CONNECT')
-						ORDER BY d.datname
-					`, originalUsername)
-
-					if err == nil {
-						defer dbRows.Close()
-						var databases []string
-						for dbRows.Next() {
-							var dbName string
-							if err := dbRows.Scan(&dbName); err == nil {
-								databases = append(databases, dbName)
-							}
-						}
-
-						// Check each database for actual privileges
-						for _, dbName := range databases {
-							func() {
-								// Get leader connection details from Patroni cluster
-								host, port, err := connectionManager.getLeaderConnectionDetails(server.Name)
-								if err != nil {
-									log.Printf("Error getting leader connection details for %s: %v", server.Name, err)
-									return
-								}
-
-								dbConnStr := fmt.Sprintf(
-									"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-									host,
-									port,
-									server.User,
-									server.Password,
-									dbName,
-									server.SSLMode,
-								)
-
-								dbConn, err := sql.Open("postgres", dbConnStr)
-								if err != nil {
-									return
-								}
-								defer dbConn.Close()
-
-								// Check for actual table access
-								var hasAccess bool
-								err = dbConn.QueryRow(`
-									SELECT EXISTS (
-										SELECT 1
-										FROM information_schema.table_privileges
-										WHERE grantee = $1
-										AND table_schema = 'public'
-									)
-								`, originalUsername).Scan(&hasAccess)
-
-								if err == nil && hasAccess {
-									qualifiedDBName := fmt.Sprintf("%s@%s", dbName, server.Name)
-									user.Databases = append(user.Databases, qualifiedDBName)
-									databaseSet[qualifiedDBName] = true
-								}
-							}()
-						}
-					}
-				}
-
-				allUsers = append(allUsers, user)
-			}
-
-			// Get all databases from this server for the create form
-			dbRows, err := db.Query(`
-				SELECT datname
-				FROM pg_database
-				WHERE datistemplate = false
-				AND datname != 'postgres'
-				ORDER BY datname
-			`)
-			if err == nil {
-				defer dbRows.Close()
-				for dbRows.Next() {
-					var dbName string
-					if err := dbRows.Scan(&dbName); err == nil {
-						qualifiedDBName := fmt.Sprintf("%s@%s", dbName, server.Name)
-						databaseSet[qualifiedDBName] = true
-					}
-				}
-			}
-		}
-
-		// Convert database set to slice
-		for dbName := range databaseSet {
-			allDatabases = append(allDatabases, dbName)
-		}
-
+		allUsers, allDatabases := aggregateUsers(connectionManager, servers)
 		c.HTML(200, "users.html", PageData{
 			Servers:              servers,
 			SelectedServer:       "",
@@ -1000,169 +1080,7 @@ func InitServer() {
 		})
 
 		v1.GET("/users", func(c *gin.Context) {
-			// Aggregate users from all servers
-			var allUsers []User
-			var allDatabases []string
-			databaseSet := make(map[string]bool)
-
-			for _, server := range servers {
-				db, err := connectionManager.GetConnection(server.Name)
-				if err != nil {
-					log.Printf("Error connecting to server %s: %v", server.Name, err)
-					continue
-				}
-
-				// Get users from this server
-				rows, err := db.Query(`
-					SELECT
-						usename,
-						usesuper,
-						usecreatedb,
-						r.rolcreaterole,
-						valuntil
-					FROM pg_user u
-					JOIN pg_roles r ON u.usename = r.rolname
-					ORDER BY usename
-				`)
-				if err != nil {
-					log.Printf("Error querying users from server %s: %v", server.Name, err)
-					continue
-				}
-				defer rows.Close()
-
-				for rows.Next() {
-					var user User
-					err := rows.Scan(
-						&user.Username,
-						&user.Superuser,
-						&user.CreateDB,
-						&user.CreateRole,
-						&user.ValidUntil,
-					)
-					if err != nil {
-						log.Printf("Error scanning user row from server %s: %v", server.Name, err)
-						continue
-					}
-
-					// Add server name to username for identification
-					user.Username = fmt.Sprintf("%s@%s", user.Username, server.Name)
-
-					// Get database access for this user
-					originalUsername := strings.Split(user.Username, "@")[0]
-					if user.Superuser || originalUsername == "postgres" {
-						// Superusers and postgres user have access to all databases
-						dbRows, err := db.Query(`
-							SELECT datname
-							FROM pg_database
-							WHERE datistemplate = false
-							ORDER BY datname
-						`)
-						if err == nil {
-							defer dbRows.Close()
-							for dbRows.Next() {
-								var dbName string
-								if err := dbRows.Scan(&dbName); err == nil {
-									qualifiedDBName := fmt.Sprintf("%s@%s", dbName, server.Name)
-									user.Databases = append(user.Databases, qualifiedDBName)
-									databaseSet[qualifiedDBName] = true
-								}
-							}
-						}
-					} else {
-						// For regular users, check specific grants
-						dbRows, err := db.Query(`
-							SELECT d.datname
-							FROM pg_database d
-							WHERE d.datistemplate = false
-							AND has_database_privilege($1, d.datname, 'CONNECT')
-							ORDER BY d.datname
-						`, originalUsername)
-
-						if err == nil {
-							defer dbRows.Close()
-							var databases []string
-							for dbRows.Next() {
-								var dbName string
-								if err := dbRows.Scan(&dbName); err == nil {
-									databases = append(databases, dbName)
-								}
-							}
-
-							// Check each database for actual privileges
-							for _, dbName := range databases {
-								func() {
-									// Get leader connection details from Patroni cluster
-									host, port, err := connectionManager.getLeaderConnectionDetails(server.Name)
-									if err != nil {
-										log.Printf("Error getting leader connection details for %s: %v", server.Name, err)
-										return
-									}
-
-									dbConnStr := fmt.Sprintf(
-										"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-										host,
-										port,
-										server.User,
-										server.Password,
-										dbName,
-										server.SSLMode,
-									)
-
-									dbConn, err := sql.Open("postgres", dbConnStr)
-									if err != nil {
-										return
-									}
-									defer dbConn.Close()
-
-									// Check for actual table access
-									var hasAccess bool
-									err = dbConn.QueryRow(`
-										SELECT EXISTS (
-											SELECT 1
-											FROM information_schema.table_privileges
-											WHERE grantee = $1
-											AND table_schema = 'public'
-										)
-									`, originalUsername).Scan(&hasAccess)
-
-									if err == nil && hasAccess {
-										qualifiedDBName := fmt.Sprintf("%s@%s", dbName, server.Name)
-										user.Databases = append(user.Databases, qualifiedDBName)
-										databaseSet[qualifiedDBName] = true
-									}
-								}()
-							}
-						}
-					}
-
-					allUsers = append(allUsers, user)
-				}
-
-				// Get all databases from this server for the create form
-				dbRows, err := db.Query(`
-					SELECT datname
-					FROM pg_database
-					WHERE datistemplate = false
-					AND datname != 'postgres'
-					ORDER BY datname
-				`)
-				if err == nil {
-					defer dbRows.Close()
-					for dbRows.Next() {
-						var dbName string
-						if err := dbRows.Scan(&dbName); err == nil {
-							qualifiedDBName := fmt.Sprintf("%s@%s", dbName, server.Name)
-							databaseSet[qualifiedDBName] = true
-						}
-					}
-				}
-			}
-
-			// Convert database set to slice
-			for dbName := range databaseSet {
-				allDatabases = append(allDatabases, dbName)
-			}
-
+			allUsers, allDatabases := aggregateUsers(connectionManager, servers)
 			c.JSON(200, PageData{
 				Servers:              servers,
 				SelectedServer:       "",
