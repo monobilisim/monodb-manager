@@ -528,14 +528,22 @@ func loadHAProxyConfig(configPath string) ([]HAProxyPort, []Service, string, int
 	return config.Ports, config.Services, config.PMMStatusURL, config.BadgeRefreshInterval, config.PMMQanURL, nil
 }
 
-// Update this function before InitServer
+// replaceBadgeWithDashboard rewrites an Uptime Kuma badge URL into the
+// corresponding dashboard page URL.
+//
+//	input : https://host/api/badge/14/status?style=for-the-badge
+//	output: https://host/dashboard/14
+//
+// Both the "/status" path segment and the query string must be dropped — the
+// dashboard route doesn't accept them. This mirrors the JS helper in
+// status.html so server-rendered links and client-rendered links agree.
 func replaceBadgeWithDashboard(url string) string {
-	// First replace api/badge with dashboard
 	url = strings.Replace(url, "/api/badge/", "/dashboard/", 1)
-	// Then remove everything after ? if it exists
+	// Strip query string first so we can cleanly match a trailing "/status".
 	if idx := strings.Index(url, "?"); idx != -1 {
 		url = url[:idx]
 	}
+	url = strings.TrimSuffix(url, "/status")
 	return url
 }
 
