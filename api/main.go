@@ -445,6 +445,35 @@ type Query struct {
 	Query    string `json:"query"`
 }
 
+// TopologyMember describes a node in the Patroni cluster with replication detail.
+type TopologyMember struct {
+	Name            string `json:"name"`
+	Host            string `json:"host"`
+	Port            int    `json:"port"`
+	Role            string `json:"role"`             // leader | replica | sync_standby | standby_leader
+	State           string `json:"state"`            // running | streaming | starting | stopped | etc.
+	Timeline        int    `json:"timeline"`
+	LagBytes        int64  `json:"lag_bytes"`        // 0 for leader
+	LagSeconds      int    `json:"lag_seconds"`      // 0 for leader
+	SyncState       string `json:"sync_state"`       // sync | async | quorum | "" (from pg_stat_replication)
+	ApplicationName string `json:"application_name"` // from pg_stat_replication
+	Reachable       bool   `json:"reachable"`
+}
+
+// TopologyServer describes one logical cluster (one `servers:` entry in config.yaml).
+type TopologyServer struct {
+	Name    string           `json:"name"`
+	Leader  string           `json:"leader"`
+	Members []TopologyMember `json:"members"`
+	Error   string           `json:"error,omitempty"` // set if discovery failed
+}
+
+// TopologyResponse is the full payload served at /api/v1/topology.
+type TopologyResponse struct {
+	Servers     []TopologyServer `json:"servers"`
+	GeneratedAt int64            `json:"generated_at"`
+}
+
 func getTemplatesDir(configuredPath string) string {
 	// If templates dir is configured, use that
 	if configuredPath != "" {
@@ -1469,6 +1498,114 @@ func InitServer() {
 				return
 			}
 		})
+
+		// Cluster topology endpoint - returns Patroni cluster members enriched
+		// with per-replica lag detail pulled from pg_stat_replication on the leader.
+		v1.GET("/topology", func(c *gin.Context) {
+			c.Header("Cache-Control", "no-cache")
+
+			resp := TopologyResponse{
+				Servers:     make([]TopologyServer, 0, len(servers)),
+				GeneratedAt: time.Now().Unix(),
+			}
+
+			for _, server := range servers {
+				ts := TopologyServer{Name: server.Name}
+
+				cluster, err := connectionManager.discoverPatroniCluster(server)
+				if err != nil {
+					log.Printf("Topology: Patroni discovery failed for %s: %v", server.Name, err)
+					ts.Error = err.Error()
+					resp.Servers = append(resp.Servers, ts)
+					continue
+				}
+
+				ts.Leader = cluster.Leader
+				ts.Members = make([]TopologyMember, 0, len(cluster.Members))
+
+				// Copy Patroni member data. Patroni wouldn't have reported them if
+				// they weren't reachable, so default Reachable=true.
+				for _, m := range cluster.Members {
+					ts.Members = append(ts.Members, TopologyMember{
+						Name:      m.Name,
+						Host:      m.Host,
+						Port:      m.Port,
+						Role:      m.Role,
+						State:     m.State,
+						Timeline:  m.Timeline,
+						LagBytes:  int64(m.Lag),
+						Reachable: true,
+					})
+				}
+
+				// Best-effort enrichment from pg_stat_replication on the leader.
+				// Failures here are non-fatal: we still return Patroni-only data.
+				db, dbErr := connectionManager.GetConnection(server.Name)
+				if dbErr != nil {
+					log.Printf("Topology: failed to get leader connection for %s: %v", server.Name, dbErr)
+					resp.Servers = append(resp.Servers, ts)
+					continue
+				}
+
+				rows, qErr := db.Query(`
+					SELECT
+					  COALESCE(application_name, ''),
+					  COALESCE(state, ''),
+					  COALESCE(sync_state, ''),
+					  COALESCE(pg_wal_lsn_diff(pg_current_wal_lsn(), replay_lsn), 0)::bigint AS lag_bytes,
+					  COALESCE(EXTRACT(epoch FROM (now() - reply_time))::int, 0) AS lag_seconds
+					FROM pg_stat_replication
+				`)
+				if qErr != nil {
+					log.Printf("Topology: pg_stat_replication query failed for %s: %v", server.Name, qErr)
+					resp.Servers = append(resp.Servers, ts)
+					continue
+				}
+
+				type replRow struct {
+					appName    string
+					state      string
+					syncState  string
+					lagBytes   int64
+					lagSeconds int
+				}
+				var replRows []replRow
+				for rows.Next() {
+					var r replRow
+					if scanErr := rows.Scan(&r.appName, &r.state, &r.syncState, &r.lagBytes, &r.lagSeconds); scanErr != nil {
+						log.Printf("Topology: scan error for %s: %v", server.Name, scanErr)
+						continue
+					}
+					replRows = append(replRows, r)
+				}
+				rows.Close()
+
+				// Match rows to members by application_name == member.Name.
+				for i := range ts.Members {
+					if ts.Members[i].Role == "leader" {
+						continue
+					}
+					for _, r := range replRows {
+						if r.appName == ts.Members[i].Name {
+							ts.Members[i].ApplicationName = r.appName
+							ts.Members[i].SyncState = r.syncState
+							ts.Members[i].LagBytes = r.lagBytes
+							ts.Members[i].LagSeconds = r.lagSeconds
+							// Prefer the precise streaming state from pg_stat_replication
+							// over Patroni's coarser state label if present.
+							if r.state != "" {
+								ts.Members[i].State = r.state
+							}
+							break
+						}
+					}
+				}
+
+				resp.Servers = append(resp.Servers, ts)
+			}
+
+			c.JSON(200, resp)
+		})
 	}
 
 	// Add the query route handler for the query page - aggregate from all servers
@@ -1551,6 +1688,14 @@ func InitServer() {
 		c.HTML(200, "query_analytics.html", gin.H{
 			"Servers":   servers,
 			"PMMQanURL": config.PMMQanURL,
+		})
+	})
+
+	// Cluster topology page. Actual data is fetched client-side from
+	// /api/v1/topology and refreshed every 5 seconds.
+	router.GET("/topology", func(c *gin.Context) {
+		c.HTML(200, "topology.html", gin.H{
+			"Servers": servers,
 		})
 	})
 
