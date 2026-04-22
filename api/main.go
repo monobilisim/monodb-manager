@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -538,6 +539,51 @@ func replaceBadgeWithDashboard(url string) string {
 	return url
 }
 
+// pmmEmbedURL returns a Grafana URL rewritten for clean iframe embedding.
+// It forces kiosk=1 so Grafana's breadcrumb, search bar and Edit/Share/Export
+// buttons are hidden, while variable filters and the time picker remain visible.
+// Note: older Grafana versions accepted "tv"/"full"/bare "kiosk", but Grafana
+// v11.3+ (PMM 3.x) removed those values from the switch; only "1" (or "true")
+// is universally supported, so we always normalise to "1" - overriding any
+// legacy/invalid value that a caller may have left in the URL.
+// Existing query params (e.g. refresh=2s) are preserved. An empty input returns
+// an empty string so callers/templates can skip rendering.
+func pmmEmbedURL(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		// Fallback: best-effort string concatenation if parsing fails.
+		if strings.Contains(raw, "?") {
+			return raw + "&kiosk=1"
+		}
+		return raw + "?kiosk=1"
+	}
+	q := u.Query()
+	// Always force kiosk=1 - overrides any stale "tv" / "full" / empty value.
+	q.Set("kiosk", "1")
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+// pmmOpenURL returns the Grafana URL with any kiosk parameter stripped, so
+// "Open in Grafana" launches the full interactive view in a new tab.
+func pmmOpenURL(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		// Fallback: leave the URL untouched rather than mangling it.
+		return raw
+	}
+	q := u.Query()
+	q.Del("kiosk")
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
 func InitServer() {
 	// Define command line flags
 	var config Config
@@ -607,6 +653,8 @@ func InitServer() {
 	// Set the function map first
 	router.SetFuncMap(template.FuncMap{
 		"replaceBadgeWithDashboard": replaceBadgeWithDashboard,
+		"pmmEmbedURL":               pmmEmbedURL,
+		"pmmOpenURL":                pmmOpenURL,
 	})
 
 	// Then load the templates
