@@ -1,74 +1,117 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full">
+<html lang="tr" class="h-full">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PostgreSQL Query Analytics</title>
+    <title>PostgreSQL Sorgu Analizi</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="h-full bg-gray-50 dark:bg-gray-900">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div class="flex justify-between items-center mb-8">
-            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Query Analytics</h1>
-            <div class="flex items-center space-x-6">
-                <button onclick="toggleDarkMode()" class="rounded-lg p-2.5 hover:bg-gray-200 dark:hover:bg-gray-700">
-                    <!-- Sun icon -->
-                    <svg class="w-6 h-6 hidden dark:block text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                    </svg>
-                    <!-- Moon icon -->
-                    <svg class="w-6 h-6 block dark:hidden text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                    </svg>
-                </button>
-                <a href="/" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
-                    Status
+<body class="h-full bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased" style="font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;">
+
+    <!-- Top navigation bar -->
+    <header class="sticky top-0 z-40 bg-white/80 dark:bg-gray-950/80 backdrop-blur border-b border-gray-200 dark:border-gray-800">
+        <div class="max-w-7xl 2xl:max-w-[96rem] min-[1800px]:max-w-[130rem] mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex h-16 items-center justify-between gap-4">
+                <a href="/" class="flex items-center gap-2.5 shrink-0">
+                    <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-700 text-white shadow-sm ring-1 ring-indigo-600/20">
+                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.657 4.03 3 9 3s9-1.343 9-3V5"/><path d="M3 12c0 1.657 4.03 3 9 3s9-1.343 9-3"/></svg>
+                    </span>
+                    <span class="text-sm font-bold tracking-tight text-gray-900 dark:text-white">PGCluster<span class="text-indigo-600 dark:text-indigo-400">Manager</span></span>
                 </a>
-                <div class="px-4 py-2.5 rounded-md bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 font-medium">
-                    Query Analytics
+
+                <nav class="flex items-center gap-1 overflow-x-auto">
+                    <a href="/" class="px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white whitespace-nowrap transition-colors">
+                        Durum
+                    </a>
+                    <a href="/topology" class="px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white whitespace-nowrap transition-colors">
+                        Topoloji
+                    </a>
+                    <div class="px-3 py-1.5 rounded-md bg-indigo-600 text-white text-sm font-semibold shadow-sm whitespace-nowrap">
+                        Sorgu Analizi
+                    </div>
+                    <a href="/query" class="px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white whitespace-nowrap transition-colors">
+                        Aktif Sorgular
+                    </a>
+                    <a href="/users" class="px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white whitespace-nowrap transition-colors">
+                        Kullanıcılar
+                    </a>
+                </nav>
+
+                <div class="flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-1 shadow-sm">
+                    <button onclick="toggleDarkMode()" title="Temayı değiştir" aria-label="Temayı değiştir" class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
+                        <svg class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                        </svg>
+                        <svg class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                        </svg>
+                    </button>
                 </div>
-                <a href="/query" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
-                    Active Queries
-                </a>
-                <a href="/users" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
-                    Users
-                </a>
             </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl 2xl:max-w-[96rem] min-[1800px]:max-w-[130rem] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+
+        <!-- Hero header -->
+        <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+            <div>
+                <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    Performans Analizi
+                </div>
+                <h1 class="mt-2 text-3xl sm:text-4xl font-bold tracking-tight text-gray-900 dark:text-white">Sorgu Analizi</h1>
+                <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">Geçmiş sorgu performansı, gecikme yüzdelikleri ve PMM'den en çok kaynak tüketen sorgular.</p>
+            </div>
+            {{if .PMMQanURL}}
+            <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                <span class="inline-flex items-center gap-1.5 rounded-full bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300 px-2.5 py-1 font-semibold ring-1 ring-inset ring-orange-200 dark:ring-orange-800/50">
+                    <svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg>
+                    Grafana tabanlı
+                </span>
+            </div>
+            {{end}}
         </div>
 
         {{if .PMMQanURL}}
-        <div class="mb-8 bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-                <h2 class="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-                    Query Performance Monitoring
-                    <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">Grafana</span>
-                </h2>
-                <div class="flex items-center space-x-2">
+        <section class="bg-white dark:bg-gray-900 rounded-xl shadow-sm ring-1 ring-gray-200 dark:ring-gray-800 overflow-hidden">
+            <header class="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center gap-4">
+                <div>
+                    <h2 class="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                        Sorgu Performans İzleme
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold tracking-wider uppercase bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">Grafana</span>
+                    </h2>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Gömülü PMM QAN gösterge paneli &mdash; iframe içinde doğrudan etkileşime geçebilirsiniz</p>
+                </div>
+                <div class="flex items-center gap-1">
                     <a href="{{.PMMQanURL | pmmOpenURL}}" target="_blank" rel="noopener noreferrer"
-                       title="Open in Grafana" aria-label="Open in Grafana"
-                       class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                       title="Grafana'da Aç" aria-label="Grafana'da Aç"
+                       class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                         </svg>
                     </a>
-                    <button onclick="adjustIframeHeight('queryAnalyticsIframe', 150)" title="Increase height" aria-label="Increase height" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                    <button onclick="adjustIframeHeight('queryAnalyticsIframe', 150)" title="Yüksekliği artır" aria-label="Yüksekliği artır" class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                         </svg>
                     </button>
-                    <button onclick="adjustIframeHeight('queryAnalyticsIframe', -150)" title="Decrease height" aria-label="Decrease height" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                    <button onclick="adjustIframeHeight('queryAnalyticsIframe', -150)" title="Yüksekliği azalt" aria-label="Yüksekliği azalt" class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
                         </svg>
                     </button>
-                    <button onclick="toggleFullscreen('queryAnalyticsIframe')" title="Fullscreen" aria-label="Fullscreen" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                    <button onclick="toggleFullscreen('queryAnalyticsIframe')" title="Tam Ekran" aria-label="Tam Ekran" class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" />
                         </svg>
                     </button>
                 </div>
-            </div>
-            <div class="w-full iframe-container">
+            </header>
+            <div class="w-full iframe-container bg-gray-50 dark:bg-gray-950">
                 <iframe
                     id="queryAnalyticsIframe"
                     src="{{.PMMQanURL | pmmEmbedURL}}"
@@ -78,17 +121,27 @@
                 </iframe>
                 <div class="resize-handle" onmousedown="initResize('queryAnalyticsIframe', event)"></div>
             </div>
-        </div>
+        </section>
         {{else}}
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg p-8 text-center">
-            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Query Analytics Not Configured</h2>
-            <p class="text-gray-600 dark:text-gray-400">
-                The query analytics dashboard has not been configured. 
-                Please add a "query_iframe" URL to your configuration file.
-            </p>
-        </div>
+        <section class="bg-white dark:bg-gray-900 rounded-xl shadow-sm ring-1 ring-gray-200 dark:ring-gray-800 overflow-hidden">
+            <div class="relative px-6 py-20 text-center overflow-hidden">
+                <div class="absolute inset-0 opacity-[0.04] dark:opacity-[0.06]" style="background-image: radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0); background-size: 24px 24px;"></div>
+                <div class="relative">
+                    <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/40 dark:to-orange-950/40 ring-1 ring-orange-200/60 dark:ring-orange-800/60 shadow-sm">
+                        <svg class="h-10 w-10 text-orange-500 dark:text-orange-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                    </div>
+                    <h3 class="mt-6 text-xl font-semibold text-gray-900 dark:text-white">Sorgu Analizi Yapılandırılmadı</h3>
+                    <p class="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto leading-relaxed">
+                        Sorgu performans geçmişini görüntülemek için yapılandırma dosyanıza PMM QAN gösterge panelinize işaret eden bir <code class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 text-xs" style="font-family: 'JetBrains Mono', ui-monospace, monospace;">query_iframe</code> URL'si ekleyin.
+                    </p>
+                </div>
+            </div>
+        </section>
         {{end}}
-    </div>
+    </main>
 
     <script>
         // Tailwind config
@@ -191,7 +244,7 @@
         }
         
         .resize-handle:hover {
-            background-color: rgba(0, 0, 0, 0.1);
+            background-color: rgba(99, 102, 241, 0.2);
         }
         
         .resize-y {
@@ -199,4 +252,4 @@
         }
     </style>
 </body>
-</html> 
+</html>

@@ -1,244 +1,323 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full">
+<html lang="tr" class="h-full">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PostgreSQL Users</title>
+    <title>PostgreSQL Kullanıcıları</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="h-full bg-gray-50 dark:bg-gray-900">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div class="flex justify-between items-center mb-8">
-            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">PostgreSQL Users</h1>
-            <div class="flex items-center space-x-6">
-                <button onclick="toggleDarkMode()" class="rounded-lg p-2.5 hover:bg-gray-200 dark:hover:bg-gray-700">
-                    <!-- Sun icon -->
-                    <svg class="w-6 h-6 hidden dark:block text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                    </svg>
-                    <!-- Moon icon -->
-                    <svg class="w-6 h-6 block dark:hidden text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                    </svg>
-                </button>
-                <a href="/" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
-                    Status
+<body class="h-full bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased" style="font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;">
+
+    <!-- Top navigation bar -->
+    <header class="sticky top-0 z-40 bg-white/80 dark:bg-gray-950/80 backdrop-blur border-b border-gray-200 dark:border-gray-800">
+        <div class="max-w-7xl 2xl:max-w-[96rem] min-[1800px]:max-w-[120rem] mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex h-16 items-center justify-between gap-4">
+                <a href="/" class="flex items-center gap-2.5 shrink-0">
+                    <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-700 text-white shadow-sm ring-1 ring-indigo-600/20">
+                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.657 4.03 3 9 3s9-1.343 9-3V5"/><path d="M3 12c0 1.657 4.03 3 9 3s9-1.343 9-3"/></svg>
+                    </span>
+                    <span class="text-sm font-bold tracking-tight text-gray-900 dark:text-white">PGCluster<span class="text-indigo-600 dark:text-indigo-400">Manager</span></span>
                 </a>
-                <a href="/query-analytics" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
-                    Query Analytics
-                </a>
-                <a href="/query" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
-                    Active Queries
-                </a>
-                <a href="/users" class="px-4 py-2.5 rounded-md bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 font-medium">
-                    Users
-                </a>
+
+                <nav class="flex items-center gap-1 overflow-x-auto">
+                    <a href="/" class="px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white whitespace-nowrap transition-colors">
+                        Durum
+                    </a>
+                    <a href="/topology" class="px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white whitespace-nowrap transition-colors">
+                        Topoloji
+                    </a>
+                    <a href="/query-analytics" class="px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white whitespace-nowrap transition-colors">
+                        Sorgu Analizi
+                    </a>
+                    <a href="/query" class="px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white whitespace-nowrap transition-colors">
+                        Aktif Sorgular
+                    </a>
+                    <div class="px-3 py-1.5 rounded-md bg-indigo-600 text-white text-sm font-semibold shadow-sm whitespace-nowrap">
+                        Kullanıcılar
+                    </div>
+                </nav>
+
+                <div class="flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-1 shadow-sm">
+                    <button onclick="toggleDarkMode()" title="Temayı değiştir" aria-label="Temayı değiştir" class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
+                        <svg class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                        </svg>
+                        <svg class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                        </svg>
+                    </button>
+                </div>
             </div>
         </div>
-        
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6 mb-8">
-            <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-6">Create New User</h2>
-            <form id="createUserForm">
-                <div class="space-y-6">
-                    <div>
-                        <label for="username" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Username</label>
-                        <div class="relative rounded-md shadow-sm">
-                            <input type="text" name="username" id="username" required
-                                class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white 
-                                shadow-sm focus:border-indigo-500 focus:ring-indigo-500 
-                                hover:border-gray-400 dark:hover:border-gray-500
-                                px-4 py-2.5 text-sm transition-colors duration-200">
-                        </div>
+    </header>
+
+    <main class="max-w-7xl 2xl:max-w-[96rem] min-[1800px]:max-w-[120rem] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+
+        <!-- Hero header -->
+        <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+            <div>
+                <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
+                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    Kimlik ve Erişim
+                </div>
+                <h1 class="mt-2 text-3xl sm:text-4xl font-bold tracking-tight text-gray-900 dark:text-white">PostgreSQL Kullanıcıları</h1>
+                <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">Küme genelindeki rolleri, veritabanı yetkilerini ve kullanıcı kimlik bilgilerini yönetin.</p>
+            </div>
+            <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                <span class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 dark:bg-gray-800 px-2.5 py-1 font-medium">
+                    {{len .Users}} rol
+                </span>
+                <span class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 dark:bg-gray-800 px-2.5 py-1 font-medium">
+                    {{len .Databases}} veritabanı
+                </span>
+            </div>
+        </div>
+
+        <!-- Create user card -->
+        <section class="bg-white dark:bg-gray-900 rounded-xl shadow-sm ring-1 ring-gray-200 dark:ring-gray-800 overflow-hidden">
+            <header class="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+                <div>
+                    <h2 class="text-base font-semibold text-gray-900 dark:text-white">Yeni Kullanıcı Oluştur</h2>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Rol birincil düğümde oluşturulur ve tüm yedeklere kopyalanır.</p>
+                </div>
+                <span class="inline-flex items-center gap-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ring-indigo-200 dark:ring-indigo-800">
+                    <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Yeni rol
+                </span>
+            </header>
+            <form id="createUserForm" class="p-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                    <div class="xl:col-span-1">
+                        <label for="username" class="block text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-1.5">Kullanıcı Adı</label>
+                        <input type="text" name="username" id="username" required autocomplete="off"
+                            placeholder="örn. analytics_reader"
+                            class="block w-full rounded-md border-0 ring-1 ring-inset ring-gray-300 dark:ring-gray-700 dark:bg-gray-800 dark:text-white
+                            focus:ring-2 focus:ring-inset focus:ring-indigo-500
+                            px-3.5 py-2.5 text-sm placeholder:text-gray-400 dark:placeholder:text-gray-500 transition-shadow"
+                            style="font-family: 'JetBrains Mono', ui-monospace, monospace;">
                     </div>
-                    <div>
-                        <label for="password" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
-                        <div class="relative rounded-md shadow-sm">
-                            <input type="password" name="password" id="password" required
-                                class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white 
-                                shadow-sm focus:border-indigo-500 focus:ring-indigo-500 
-                                hover:border-gray-400 dark:hover:border-gray-500
-                                px-4 py-2.5 text-sm transition-colors duration-200">
-                        </div>
+                    <div class="xl:col-span-1">
+                        <label for="password" class="block text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-1.5">Parola</label>
+                        <input type="password" name="password" id="password" required autocomplete="new-password"
+                            placeholder="Güçlü bir parola"
+                            class="block w-full rounded-md border-0 ring-1 ring-inset ring-gray-300 dark:ring-gray-700 dark:bg-gray-800 dark:text-white
+                            focus:ring-2 focus:ring-inset focus:ring-indigo-500
+                            px-3.5 py-2.5 text-sm placeholder:text-gray-400 dark:placeholder:text-gray-500 transition-shadow">
                     </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Databases (<span id="selectedCount">0 selected</span>)
+                    <div class="xl:col-span-1">
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-1.5">
+                            Veritabanları <span class="normal-case font-medium text-gray-400 dark:text-gray-500 tracking-normal">(<span id="selectedCount">0 seçildi</span>)</span>
                         </label>
                         <button type="button" onclick="toggleDatabaseModal()"
-                            class="mt-1 inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800">
-                            Select Databases
-                        </button>
-                    </div>
-                    <div>
-                        <button type="submit"
-                            class="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
-                            Create User
+                            class="w-full inline-flex items-center justify-between gap-2 px-3.5 py-2.5 ring-1 ring-inset ring-gray-300 dark:ring-gray-700 shadow-sm text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors">
+                            <span class="flex items-center gap-2">
+                                <svg class="h-4 w-4 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.657 4.03 3 9 3s9-1.343 9-3V5"/><path d="M3 12c0 1.657 4.03 3 9 3s9-1.343 9-3"/></svg>
+                                Veritabanı Seç
+                            </span>
+                            <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
                         </button>
                     </div>
                 </div>
+                <div class="mt-6 pt-6 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between gap-4 flex-wrap">
+                    <p class="text-xs text-gray-500 dark:text-gray-400 max-w-md">Veritabanı seçmeden rol oluşturursanız kullanıcının hiçbir veritabanına erişimi olmaz. Erişimi daha sonra verebilirsiniz.</p>
+                    <button type="submit"
+                        class="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 transition-colors">
+                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                        Kullanıcı Oluştur
+                    </button>
+                </div>
             </form>
-        </div>
-        
-        <div class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-                <h2 class="text-xl font-semibold text-gray-900 dark:text-white">User List</h2>
-                <div class="relative">
-                    <label for="dbFilter" class="sr-only">Filter by database</label>
-                    <select id="dbFilter" onchange="filterUsers()" 
-                        class="block w-48 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white 
-                        shadow-sm focus:border-indigo-500 focus:ring-indigo-500 
-                        hover:border-gray-400 dark:hover:border-gray-500
-                        px-4 py-2.5 text-sm">
-                        <option value="">All Databases</option>
+        </section>
+
+        <!-- Users table -->
+        <section class="bg-white dark:bg-gray-900 rounded-xl shadow-sm ring-1 ring-gray-200 dark:ring-gray-800 overflow-hidden">
+            <header class="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center gap-4 flex-wrap">
+                <div>
+                    <h2 class="text-base font-semibold text-gray-900 dark:text-white">Kullanıcı Listesi</h2>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Küme genelinde keşfedilen tüm PostgreSQL rolleri</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <label for="dbFilter" class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Filtre</label>
+                    <select id="dbFilter" onchange="filterUsers()"
+                        class="block w-56 rounded-md border-0 ring-1 ring-inset ring-gray-300 dark:ring-gray-700 dark:bg-gray-800 dark:text-white
+                        focus:ring-2 focus:ring-inset focus:ring-indigo-500
+                        px-3 py-2 text-sm">
+                        <option value="">Tüm Veritabanları</option>
                         {{range .Databases}}
-                        <option value="{{.}}">{{.}}</option>
+                        <option value="{{.}}">{{. | stripServer}}</option>
                         {{end}}
                     </select>
                 </div>
-            </div>
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead class="bg-gray-50 dark:bg-gray-700">
-                    <tr>
-                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Username</th>
-                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Superuser</th>
-                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Create DB</th>
-                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Create Role</th>
-                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Database Access</th>
-                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Valid Until</th>
-                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
-                    </tr>
-                </thead>
-                <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    {{range .Users}}
-                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">{{.Username}}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                            {{if .Superuser}}
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100">Yes</span>
-                            {{else}}
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">No</span>
-                            {{end}}
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                            {{if .CreateDB}}
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100">Yes</span>
-                            {{else}}
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">No</span>
-                            {{end}}
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                            {{if .CreateRole}}
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100">Yes</span>
-                            {{else}}
-                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">No</span>
-                            {{end}}
-                        </td>
-                        <td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400" data-databases="{{range .Databases}}{{.}},{{end}}">
-                            <div class="flex flex-wrap gap-1">
-                                {{range .Databases}}
-                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100">
-                                    {{.}}
+            </header>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                    <thead class="bg-gray-50 dark:bg-gray-900/50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Kullanıcı Adı</th>
+                            <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Süper Kullanıcı</th>
+                            <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">DB Oluşturma</th>
+                            <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Rol Oluşturma</th>
+                            <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Veritabanı Erişimi</th>
+                            <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Geçerlilik Tarihi</th>
+                            <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
+                        {{range .Users}}
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-white" style="font-family: 'JetBrains Mono', ui-monospace, monospace;">{{.Username | stripServer}}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                {{if .Superuser}}
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 ring-1 ring-inset ring-emerald-200 dark:ring-emerald-800">
+                                        <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                        Evet
+                                    </span>
+                                {{else}}
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 ring-1 ring-inset ring-gray-200 dark:ring-gray-700">Hayır</span>
+                                {{end}}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                {{if .CreateDB}}
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 ring-1 ring-inset ring-emerald-200 dark:ring-emerald-800">
+                                        <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                        Evet
+                                    </span>
+                                {{else}}
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 ring-1 ring-inset ring-gray-200 dark:ring-gray-700">Hayır</span>
+                                {{end}}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                {{if .CreateRole}}
+                                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 ring-1 ring-inset ring-emerald-200 dark:ring-emerald-800">
+                                        <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                        Evet
+                                    </span>
+                                {{else}}
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 ring-1 ring-inset ring-gray-200 dark:ring-gray-700">Hayır</span>
+                                {{end}}
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-500 dark:text-gray-400" data-databases="{{range .Databases}}{{.}},{{end}}">
+                                <div class="flex flex-wrap gap-1 max-w-md">
+                                    {{range .Databases}}
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 ring-1 ring-inset ring-indigo-200/60 dark:ring-indigo-800/60">
+                                        {{. | stripServer}}
+                                    </span>
+                                    {{end}}
+                                    {{if not .Databases}}
+                                    <span class="text-gray-400 dark:text-gray-500 italic text-xs">Erişim yok</span>
+                                    {{end}}
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400" style="font-family: 'JetBrains Mono', ui-monospace, monospace;">
+                                {{if .ValidUntil}}{{.ValidUntil}}{{else}}<span class="text-gray-400 dark:text-gray-500">Süresiz</span>{{end}}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                {{if ne (stripServer .Username) "postgres"}}
+                                <button onclick="showDeleteConfirmation('{{.Username}}')"
+                                    class="inline-flex items-center gap-1.5 rounded-md bg-red-50 dark:bg-red-900/30 px-3 py-1.5 text-xs font-semibold text-red-700 dark:text-red-300 ring-1 ring-inset ring-red-200 dark:ring-red-800 hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors">
+                                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                    Sil
+                                </button>
+                                {{else}}
+                                <span class="inline-flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 italic">
+                                    <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                    Korumalı
                                 </span>
                                 {{end}}
-                                {{if not .Databases}}
-                                <span class="text-gray-400 dark:text-gray-500 italic">No access</span>
-                                {{end}}
-                            </div>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                            {{if .ValidUntil}}{{.ValidUntil}}{{else}}Never{{end}}
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                            {{if ne .Username "postgres"}}
-                            <button onclick="showDeleteConfirmation('{{.Username}}')" 
-                                class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 font-medium">
-                                Delete
-                            </button>
-                            {{end}}
-                        </td>
-                    </tr>
-                    {{end}}
-                </tbody>
-            </table>
-        </div>
-    </div>
+                            </td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
 
-    <div id="databaseModal" class="hidden fixed inset-0 bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75 flex items-center justify-center">
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full mx-4">
-            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+    <div id="databaseModal" class="hidden fixed inset-0 z-50 bg-gray-900/60 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center">
+        <div class="bg-white dark:bg-gray-900 rounded-xl shadow-2xl ring-1 ring-gray-200 dark:ring-gray-800 max-w-2xl w-full mx-4">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-800">
                 <div class="flex items-center justify-between">
-                    <h3 class="text-lg font-medium text-gray-900 dark:text-white">Select Databases</h3>
-                    <button type="button" onclick="toggleDatabaseModal()" class="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300">
-                        <span class="sr-only">Close</span>
-                        <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-white">Veritabanı Seç</h3>
+                    <button type="button" onclick="toggleDatabaseModal()" class="rounded-md p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                        <span class="sr-only">Kapat</span>
+                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                         </svg>
                     </button>
                 </div>
             </div>
-            <div class="px-4 py-4 max-h-96 overflow-y-auto">
-                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            <div class="px-6 py-5 max-h-96 overflow-y-auto">
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
                     {{range .Databases}}
-                    <label class="inline-flex items-center p-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700 
+                    <label class="inline-flex items-center gap-2 p-2.5 rounded-md ring-1 ring-transparent hover:ring-gray-200 dark:hover:ring-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-all
                         {{if eq . "postgres"}}opacity-50{{end}}">
-                        <input type="checkbox" name="databases[]" value="{{.}}" 
+                        <input type="checkbox" name="databases[]" value="{{.}}"
                             onchange="updateSelectedCount()"
-                            {{if eq . "postgres"}}data-requires-superuser="true"{{end}}
+                            {{if eq (stripServer .) "postgres"}}data-requires-superuser="true"{{end}}
                             class="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500 dark:bg-gray-700">
-                        <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">{{.}}</span>
+                        <span class="text-sm text-gray-700 dark:text-gray-300" style="font-family: 'JetBrains Mono', ui-monospace, monospace;">{{. | stripServer}}</span>
                     </label>
                     {{end}}
                 </div>
             </div>
-            <div class="px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-b-lg flex justify-end">
-                <button type="button" 
+            <div class="px-6 py-4 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-200 dark:border-gray-800 rounded-b-xl flex justify-end">
+                <button type="button"
                     onclick="toggleDatabaseModal()"
-                    class="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
-                    Done
+                    class="inline-flex justify-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 transition-colors">
+                    Tamam
                 </button>
             </div>
         </div>
     </div>
 
-    <div id="deleteModal" class="hidden fixed inset-0 bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75 flex items-center justify-center">
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4">
-            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-                <h3 class="text-lg font-medium text-gray-900 dark:text-white">Confirm Delete</h3>
+    <div id="deleteModal" class="hidden fixed inset-0 z-50 bg-gray-900/60 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center">
+        <div class="bg-white dark:bg-gray-900 rounded-xl shadow-2xl ring-1 ring-gray-200 dark:ring-gray-800 max-w-md w-full mx-4">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center gap-3">
+                <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 ring-1 ring-red-200 dark:ring-red-800">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                </span>
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white">Silmeyi Onayla</h3>
             </div>
-            <div class="px-4 py-4">
-                <p class="text-sm text-gray-500 dark:text-gray-400">
-                    Are you sure you want to delete user <span id="deleteUsername" class="font-medium text-gray-900 dark:text-white"></span>? 
-                    This action cannot be undone.
+            <div class="px-6 py-5">
+                <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                    <span id="deleteUsername" class="font-semibold text-gray-900 dark:text-white" style="font-family: 'JetBrains Mono', ui-monospace, monospace;"></span>
+                    kullanıcısını silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.
                 </p>
             </div>
-            <div class="px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-b-lg flex justify-end space-x-3">
-                <button type="button" 
+            <div class="px-6 py-4 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-200 dark:border-gray-800 rounded-b-xl flex justify-end gap-3">
+                <button type="button"
                     onclick="hideDeleteConfirmation()"
-                    class="inline-flex justify-center px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800">
-                    Cancel
+                    class="inline-flex justify-center px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 ring-1 ring-inset ring-gray-300 dark:ring-gray-700 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    İptal
                 </button>
-                <button type="button" 
+                <button type="button"
                     id="confirmDelete"
-                    class="inline-flex justify-center px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 dark:focus:ring-offset-gray-800">
-                    Delete
+                    class="inline-flex justify-center px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-md shadow-sm hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 dark:focus:ring-offset-gray-900 transition-colors">
+                    Sil
                 </button>
             </div>
         </div>
     </div>
 
-    <div id="errorModal" class="hidden fixed inset-0 bg-gray-500 bg-opacity-75 dark:bg-gray-900 dark:bg-opacity-75 flex items-center justify-center">
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4">
-            <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-                <h3 class="text-lg font-medium text-red-600 dark:text-red-400">Error</h3>
+    <div id="errorModal" class="hidden fixed inset-0 z-50 bg-gray-900/60 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center">
+        <div class="bg-white dark:bg-gray-900 rounded-xl shadow-2xl ring-1 ring-gray-200 dark:ring-gray-800 max-w-md w-full mx-4">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center gap-3">
+                <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 ring-1 ring-red-200 dark:ring-red-800">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                </span>
+                <h3 class="text-base font-semibold text-red-700 dark:text-red-400">Hata</h3>
             </div>
-            <div class="px-4 py-4">
-                <p id="errorMessage" class="text-sm text-gray-500 dark:text-gray-400"></p>
+            <div class="px-6 py-5">
+                <p id="errorMessage" class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed"></p>
             </div>
-            <div class="px-4 py-3 bg-gray-50 dark:bg-gray-700 rounded-b-lg flex justify-end">
-                <button type="button" 
+            <div class="px-6 py-4 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-200 dark:border-gray-800 rounded-b-xl flex justify-end">
+                <button type="button"
                     onclick="hideErrorModal()"
-                    class="inline-flex justify-center px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800">
-                    Close
+                    class="inline-flex justify-center px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 ring-1 ring-inset ring-gray-300 dark:ring-gray-700 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    Kapat
                 </button>
             </div>
         </div>
@@ -266,7 +345,7 @@
 
         function updateSelectedCount() {
             const count = document.querySelectorAll('input[name="databases[]"]:checked').length;
-            document.getElementById('selectedCount').textContent = count + ' selected';
+            document.getElementById('selectedCount').textContent = count + ' seçildi';
         }
 
         function showDeleteConfirmation(username) {
@@ -363,4 +442,3 @@
     </script>
 </body>
 </html>
-

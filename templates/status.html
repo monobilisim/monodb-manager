@@ -1,80 +1,126 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full">
+<html lang="tr" class="h-full">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PostgreSQL Status</title>
+    <title>PostgreSQL Durumu</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="h-full bg-gray-50 dark:bg-gray-900">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div class="flex justify-between items-center mb-8">
-            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">PostgreSQL Status</h1>
-            <div class="flex items-center space-x-6">
-                <button onclick="toggleDarkMode()" class="rounded-lg p-2.5 hover:bg-gray-200 dark:hover:bg-gray-700">
-                    <!-- Sun icon -->
-                    <svg class="w-6 h-6 hidden dark:block text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                    </svg>
-                    <!-- Moon icon -->
-                    <svg class="w-6 h-6 block dark:hidden text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                    </svg>
-                </button>
-                <button id="refreshBtn" onclick="refreshStatusBadges()" class="rounded-lg p-2.5 hover:bg-gray-200 dark:hover:bg-gray-700">
-                    <!-- Refresh icon -->
-                    <svg class="w-6 h-6 text-gray-800 dark:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                </button>
-                <div class="px-4 py-2.5 rounded-md bg-indigo-100 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 font-medium">
-                    Status
+<body class="h-full bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased" style="font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;">
+
+    <!-- Top navigation bar -->
+    <header class="sticky top-0 z-40 bg-white/80 dark:bg-gray-950/80 backdrop-blur border-b border-gray-200 dark:border-gray-800">
+        <div class="max-w-7xl 2xl:max-w-[96rem] min-[1800px]:max-w-[120rem] mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex h-16 items-center justify-between gap-4">
+                <!-- Brand -->
+                <a href="/" class="flex items-center gap-2.5 shrink-0">
+                    <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-700 text-white shadow-sm ring-1 ring-indigo-600/20">
+                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.657 4.03 3 9 3s9-1.343 9-3V5"/><path d="M3 12c0 1.657 4.03 3 9 3s9-1.343 9-3"/></svg>
+                    </span>
+                    <span class="text-sm font-bold tracking-tight text-gray-900 dark:text-white">PGCluster<span class="text-indigo-600 dark:text-indigo-400">Manager</span></span>
+                </a>
+
+                <!-- Primary nav -->
+                <nav class="flex items-center gap-1 overflow-x-auto">
+                    <div class="px-3 py-1.5 rounded-md bg-indigo-600 text-white text-sm font-semibold shadow-sm whitespace-nowrap">
+                        Durum
+                    </div>
+                    <a href="/topology" class="px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white whitespace-nowrap transition-colors">
+                        Topoloji
+                    </a>
+                    <a href="/query-analytics" class="px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white whitespace-nowrap transition-colors">
+                        Sorgu Analizi
+                    </a>
+                    <a href="/query" class="px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white whitespace-nowrap transition-colors">
+                        Aktif Sorgular
+                    </a>
+                    <a href="/users" class="px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white whitespace-nowrap transition-colors">
+                        Kullanıcılar
+                    </a>
+                </nav>
+
+                <!-- Utility actions (grouped) -->
+                <div class="flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-1 shadow-sm">
+                    <button id="refreshBtn" onclick="refreshStatusBadges()" title="Rozetleri yenile" aria-label="Rozetleri yenile" class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                    </button>
+                    <button onclick="toggleDarkMode()" title="Temayı değiştir" aria-label="Temayı değiştir" class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
+                        <svg class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                        </svg>
+                        <svg class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                        </svg>
+                    </button>
                 </div>
-                <a href="/query-analytics" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
-                    Query Analytics
-                </a>
-                <a href="/query" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
-                    Active Queries
-                </a>
-                <a href="/users" class="px-4 py-2.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300">
-                    Users
-                </a>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl 2xl:max-w-[96rem] min-[1800px]:max-w-[120rem] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+
+        <!-- Hero header -->
+        <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+            <div>
+                <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
+                    <span class="relative flex h-2 w-2">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    Canlı Küme Genel Bakışı
+                </div>
+                <h1 class="mt-2 text-3xl sm:text-4xl font-bold tracking-tight text-gray-900 dark:text-white">PostgreSQL Durumu</h1>
+                <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">Küme düğümlerinizdeki anlık sağlık, bağlantı portları ve servis durumu.</p>
+            </div>
+            <div class="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+                <span class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 dark:bg-gray-800 px-2.5 py-1 font-medium">
+                    <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    Rozetler her 30 saniyede bir yenilenir
+                </span>
             </div>
         </div>
 
         {{if .PMMStatusURL}}
-        <div id="pmmContainer" class="mb-8 bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-                <h2 class="text-xl font-semibold text-gray-900 dark:text-white flex items-center">
-                    Cluster Status
-                    <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">Grafana</span>
-                </h2>
-                <div class="flex items-center space-x-2">
+        <section id="pmmContainer" class="bg-white dark:bg-gray-900 rounded-xl shadow-sm ring-1 ring-gray-200 dark:ring-gray-800 overflow-hidden">
+            <header class="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center gap-4">
+                <div>
+                    <h2 class="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                        Küme Durumu
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold tracking-wider uppercase bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">Grafana</span>
+                    </h2>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Canlı PMM gösterge paneli</p>
+                </div>
+                <div class="flex items-center gap-1">
                     <a href="{{.PMMStatusURL | pmmOpenURL}}" target="_blank" rel="noopener noreferrer"
-                       title="Open in Grafana" aria-label="Open in Grafana"
-                       class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                       title="Grafana'da Aç" aria-label="Grafana'da Aç"
+                       class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                         </svg>
                     </a>
-                    <button onclick="adjustIframeHeight('pmmIframe', 150)" title="Increase height" aria-label="Increase height" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                    <button onclick="adjustIframeHeight('pmmIframe', 150)" title="Yüksekliği artır" aria-label="Yüksekliği artır" class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                         </svg>
                     </button>
-                    <button onclick="adjustIframeHeight('pmmIframe', -150)" title="Decrease height" aria-label="Decrease height" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                    <button onclick="adjustIframeHeight('pmmIframe', -150)" title="Yüksekliği azalt" aria-label="Yüksekliği azalt" class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
                         </svg>
                     </button>
-                    <button onclick="toggleFullscreen('pmmIframe')" title="Fullscreen" aria-label="Fullscreen" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                    <button onclick="toggleFullscreen('pmmIframe')" title="Tam Ekran" aria-label="Tam Ekran" class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" />
                         </svg>
                     </button>
                 </div>
-            </div>
-            <div class="w-full iframe-container">
+            </header>
+            <div class="w-full iframe-container bg-gray-50 dark:bg-gray-950">
                 <iframe
                     id="pmmIframe"
                     src="{{.PMMStatusURL | pmmEmbedURL}}"
@@ -84,71 +130,88 @@
                 </iframe>
                 <div class="resize-handle" onmousedown="initResize('pmmIframe', event)"></div>
             </div>
-        </div>
+        </section>
         {{end}}
 
-        <div id="haproxyPortsContainer" class="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                <h2 class="text-xl font-semibold text-gray-900 dark:text-white">HAProxy PGSQL Connection Ports</h2>
-            </div>
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead class="bg-gray-50 dark:bg-gray-700">
-                    <tr>
-                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Port</th>
-                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Type</th>
-                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
-                    </tr>
-                </thead>
-                <tbody id="haproxyPortsTable" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    {{range .HAPorts}}
-                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{{.Port}}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{{.Type}}</td>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <a href="{{.Status | replaceBadgeWithDashboard}}" target="_blank" rel="noopener">
-                                <img src="{{.Status}}"
-                                    alt="Status Badge"
-                                    class="h-6 hover:opacity-80 transition-opacity duration-200">
-                            </a>
-                        </td>
-                    </tr>
-                    {{end}}
-                </tbody>
-            </table>
-        </div>
+        <!-- Ports + Services two-column grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-        <div id="servicesContainer" class="mt-8 bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
-            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Service Status</h2>
-            </div>
-            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead class="bg-gray-50 dark:bg-gray-700">
-                    <tr>
-                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Service</th>
-                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Node 1</th>
-                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Node 2</th>
-                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Node 3</th>
-                    </tr>
-                </thead>
-                <tbody id="servicesTable" class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    {{range .Services}}
-                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">{{.Name}}</td>
-                        {{range .Nodes}}
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <a href="{{.URL | replaceBadgeWithDashboard}}" target="_blank" rel="noopener">
-                                <img src="{{.URL}}"
-                                    alt="Status Badge"
-                                    class="h-6 hover:opacity-80 transition-opacity duration-200">
-                            </a>
-                        </td>
-                        {{end}}
-                    </tr>
-                    {{end}}
-                </tbody>
-            </table>
+            <section id="haproxyPortsContainer" class="bg-white dark:bg-gray-900 rounded-xl shadow-sm ring-1 ring-gray-200 dark:ring-gray-800 overflow-hidden">
+                <header class="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-base font-semibold text-gray-900 dark:text-white">HAProxy PGSQL Bağlantı Portları</h2>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">HAProxy tarafından yayınlanan yönlendirme uç noktaları</p>
+                    </div>
+                    <span class="inline-flex items-center rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ring-indigo-200 dark:ring-indigo-800">HAProxy</span>
+                </header>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                        <thead class="bg-gray-50 dark:bg-gray-900/50">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Port</th>
+                                <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tür</th>
+                                <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Durum</th>
+                            </tr>
+                        </thead>
+                        <tbody id="haproxyPortsTable" class="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
+                            {{range .HAPorts}}
+                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-white" style="font-family: 'JetBrains Mono', ui-monospace, monospace;">{{.Port}}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">{{.Type}}</td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <a href="{{.Status | replaceBadgeWithDashboard}}" target="_blank" rel="noopener">
+                                        <img src="{{.Status}}"
+                                            alt="Durum Rozeti"
+                                            class="h-6 hover:opacity-80 transition-opacity duration-200">
+                                    </a>
+                                </td>
+                            </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="servicesContainer" class="bg-white dark:bg-gray-900 rounded-xl shadow-sm ring-1 ring-gray-200 dark:ring-gray-800 overflow-hidden">
+                <header class="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-base font-semibold text-gray-900 dark:text-white">Servis Durumu</h2>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Küme genelinde düğüm başına servis sağlığı</p>
+                    </div>
+                    <span class="inline-flex items-center rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ring-emerald-200 dark:ring-emerald-800">3 Düğüm</span>
+                </header>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                        <thead class="bg-gray-50 dark:bg-gray-900/50">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Servis</th>
+                                <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Düğüm 1</th>
+                                <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Düğüm 2</th>
+                                <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Düğüm 3</th>
+                            </tr>
+                        </thead>
+                        <tbody id="servicesTable" class="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
+                            {{range .Services}}
+                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-white">{{.Name}}</td>
+                                {{range .Nodes}}
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <a href="{{.URL | replaceBadgeWithDashboard}}" target="_blank" rel="noopener">
+                                        <img src="{{.URL}}"
+                                            alt="Durum Rozeti"
+                                            class="h-6 hover:opacity-80 transition-opacity duration-200">
+                                    </a>
+                                </td>
+                                {{end}}
+                            </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
         </div>
-    </div>
+    </main>
 
     <script>
         // Tailwind config
@@ -191,7 +254,7 @@
                     <td class="px-6 py-4 whitespace-nowrap">
                         <a href="${replaceBadgeWithDashboard(statusUrl)}" target="_blank" rel="noopener">
                             <img src="${statusUrl}"
-                                alt="Status Badge"
+                                alt="Durum Rozeti"
                                 class="h-6 hover:opacity-80 transition-opacity duration-200">
                         </a>
                     </td>
@@ -209,7 +272,7 @@
                         <td class="px-6 py-4 whitespace-nowrap">
                             <a href="${replaceBadgeWithDashboard(node.url)}" target="_blank" rel="noopener">
                                 <img src="${node.url}"
-                                    alt="Status Badge"
+                                    alt="Durum Rozeti"
                                     class="h-6 hover:opacity-80 transition-opacity duration-200">
                             </a>
                         </td>
@@ -388,12 +451,12 @@
                 const debugPanel = document.createElement('div');
                 debugPanel.style.cssText = 'position:fixed;top:10px;right:10px;background:rgba(0,0,0,0.8);color:white;padding:10px;font-size:12px;z-index:9999;border-radius:5px;';
                 debugPanel.innerHTML = `
-                    <div><strong>Status Refresh Debug</strong></div>
-                    <div>Success: <span id="debug-success">0</span></div>
-                    <div>Failed: <span id="debug-failed">0</span></div>
-                    <div>Last: <span id="debug-last">-</span></div>
-                    <div>Endpoint: /api/v1/status</div>
-                    <button onclick="refreshStatusBadges()" style="margin-top:5px;padding:2px 5px;">Manual Refresh</button>
+                    <div><strong>Durum Yenileme Hata Ayıklama</strong></div>
+                    <div>Başarılı: <span id="debug-success">0</span></div>
+                    <div>Başarısız: <span id="debug-failed">0</span></div>
+                    <div>Son: <span id="debug-last">-</span></div>
+                    <div>Uç nokta: /api/v1/status</div>
+                    <button onclick="refreshStatusBadges()" style="margin-top:5px;padding:2px 5px;">Manuel Yenile</button>
                 `;
                 document.body.appendChild(debugPanel);
                 
@@ -514,7 +577,7 @@
         }
 
         .resize-handle:hover {
-            background-color: rgba(0, 0, 0, 0.1);
+            background-color: rgba(99, 102, 241, 0.2);
         }
 
         .resize-y {
