@@ -655,6 +655,16 @@ func InitServer() {
 		"replaceBadgeWithDashboard": replaceBadgeWithDashboard,
 		"pmmEmbedURL":               pmmEmbedURL,
 		"pmmOpenURL":                pmmOpenURL,
+		// stripServer drops a trailing "@server" suffix from compound keys
+		// (e.g. "alice@calik-yepas-patroni" -> "alice") for display only.
+		// The original value must still be used for CRUD calls that depend
+		// on the username@server / database@server compound format.
+		"stripServer": func(s string) string {
+			if idx := strings.Index(s, "@"); idx != -1 {
+				return s[:idx]
+			}
+			return s
+		},
 	})
 
 	// Then load the templates
