@@ -450,8 +450,8 @@ type TopologyMember struct {
 	Name            string `json:"name"`
 	Host            string `json:"host"`
 	Port            int    `json:"port"`
-	Role            string `json:"role"`             // leader | replica | sync_standby | standby_leader
-	State           string `json:"state"`            // running | streaming | starting | stopped | etc.
+	Role            string `json:"role"`  // leader | replica | sync_standby | standby_leader
+	State           string `json:"state"` // running | streaming | starting | stopped | etc.
 	Timeline        int    `json:"timeline"`
 	LagBytes        int64  `json:"lag_bytes"`        // 0 for leader
 	LagSeconds      int    `json:"lag_seconds"`      // 0 for leader
@@ -1696,6 +1696,7 @@ func InitServer() {
 	router.GET("/topology", func(c *gin.Context) {
 		c.HTML(200, "topology.html", gin.H{
 			"Servers": servers,
+			"HAPorts": haPorts,
 		})
 	})
 
