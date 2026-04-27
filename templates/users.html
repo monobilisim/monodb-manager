@@ -7,39 +7,42 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    {{template "sidebar-head"}}
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="h-full bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased" style="font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;">
 
-    <!-- Top navigation bar -->
-    <header class="sticky top-0 z-40 bg-white/80 dark:bg-gray-950/80 backdrop-blur border-b border-gray-200 dark:border-gray-800">
-        <div class="max-w-7xl 2xl:max-w-[96rem] min-[1800px]:max-w-[120rem] mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex h-16 items-center justify-between gap-4">
-                <a href="/" class="flex items-center gap-2.5 shrink-0">
-                    <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-700 text-white shadow-sm ring-1 ring-indigo-600/20">
-                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.657 4.03 3 9 3s9-1.343 9-3V5"/><path d="M3 12c0 1.657 4.03 3 9 3s9-1.343 9-3"/></svg>
-                    </span>
-                    <span class="text-sm font-bold tracking-tight text-gray-900 dark:text-white">PGCluster<span class="text-indigo-600 dark:text-indigo-400">Manager</span></span>
-                </a>
+    <div class="flex min-h-screen">
 
-                <nav class="flex items-center gap-1 overflow-x-auto">
-                    <a href="/" class="px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white whitespace-nowrap transition-colors">
-                        Durum
-                    </a>
-                    <a href="/topology" class="px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white whitespace-nowrap transition-colors">
-                        Topoloji
-                    </a>
-                    <a href="/query-analytics" class="px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white whitespace-nowrap transition-colors">
-                        Sorgu Analizi
-                    </a>
-                    <a href="/query" class="px-3 py-1.5 rounded-md text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white whitespace-nowrap transition-colors">
-                        Aktif Sorgular
-                    </a>
-                    <div class="px-3 py-1.5 rounded-md bg-indigo-600 text-white text-sm font-semibold shadow-sm whitespace-nowrap">
-                        Kullanıcılar
+        {{template "sidebar" "users"}}
+
+        <div class="main-wrapper flex-1 lg:ml-64 min-w-0 flex flex-col">
+
+            <main class="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8 space-y-8">
+
+        <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+            <div class="flex items-start gap-3 min-w-0">
+                <button onclick="toggleSidebar()" class="lg:hidden mt-1 rounded-md p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0" aria-label="Menü">
+                    <svg class="w-5 h-5" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                </button>
+                <div class="min-w-0">
+                    <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        Kimlik ve Erişim
                     </div>
-                </nav>
-
+                    <h1 class="mt-2 text-3xl sm:text-4xl font-bold tracking-tight text-gray-900 dark:text-white">PostgreSQL Kullanıcıları</h1>
+                    <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">Cluster genelindeki rolleri, veritabanı yetkilerini ve kullanıcı kimlik bilgilerini yönetin.</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 shrink-0">
+                <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                    <span class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 dark:bg-gray-800 px-2.5 py-1 font-medium">
+                        {{len .Users}} rol
+                    </span>
+                    <span class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 dark:bg-gray-800 px-2.5 py-1 font-medium">
+                        {{len .Databases}} veritabanı
+                    </span>
+                </div>
                 <div class="flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-1 shadow-sm">
                     <button onclick="toggleDarkMode()" title="Temayı değiştir" aria-label="Temayı değiştir" class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
                         <svg class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -52,36 +55,13 @@
                 </div>
             </div>
         </div>
-    </header>
-
-    <main class="max-w-7xl 2xl:max-w-[96rem] min-[1800px]:max-w-[120rem] mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-
-        <!-- Hero header -->
-        <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-            <div>
-                <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
-                    <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    Kimlik ve Erişim
-                </div>
-                <h1 class="mt-2 text-3xl sm:text-4xl font-bold tracking-tight text-gray-900 dark:text-white">PostgreSQL Kullanıcıları</h1>
-                <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">Küme genelindeki rolleri, veritabanı yetkilerini ve kullanıcı kimlik bilgilerini yönetin.</p>
-            </div>
-            <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                <span class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 dark:bg-gray-800 px-2.5 py-1 font-medium">
-                    {{len .Users}} rol
-                </span>
-                <span class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 dark:bg-gray-800 px-2.5 py-1 font-medium">
-                    {{len .Databases}} veritabanı
-                </span>
-            </div>
-        </div>
 
         <!-- Create user card -->
         <section class="bg-white dark:bg-gray-900 rounded-xl shadow-sm ring-1 ring-gray-200 dark:ring-gray-800 overflow-hidden">
             <header class="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
                 <div>
                     <h2 class="text-base font-semibold text-gray-900 dark:text-white">Yeni Kullanıcı Oluştur</h2>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Rol birincil düğümde oluşturulur ve tüm yedeklere kopyalanır.</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Rol birincil node'da oluşturulur ve tüm yedeklere kopyalanır.</p>
                 </div>
                 <span class="inline-flex items-center gap-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ring-indigo-200 dark:ring-indigo-800">
                     <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -137,7 +117,7 @@
             <header class="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center gap-4 flex-wrap">
                 <div>
                     <h2 class="text-base font-semibold text-gray-900 dark:text-white">Kullanıcı Listesi</h2>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Küme genelinde keşfedilen tüm PostgreSQL rolleri</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Cluster genelinde keşfedilen tüm PostgreSQL rolleri</p>
                 </div>
                 <div class="flex items-center gap-2">
                     <label for="dbFilter" class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Filtre</label>
@@ -234,7 +214,9 @@
                 </table>
             </div>
         </section>
-    </main>
+            </main>
+        </div>
+    </div>
 
     <div id="databaseModal" class="hidden fixed inset-0 z-50 bg-gray-900/60 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center">
         <div class="bg-white dark:bg-gray-900 rounded-xl shadow-2xl ring-1 ring-gray-200 dark:ring-gray-800 max-w-2xl w-full mx-4">
@@ -337,6 +319,7 @@
             const isDark = document.documentElement.classList.toggle('dark');
             localStorage.setItem('darkMode', isDark);
         }
+
 
         function toggleDatabaseModal() {
             const modal = document.getElementById('databaseModal');
