@@ -1,0 +1,279 @@
+{{define "sidebar-head"}}
+<script>
+    (function() {
+        try {
+            var h = document.documentElement;
+            h.classList.toggle('dark', localStorage.getItem('darkMode') === 'true');
+            if (localStorage.getItem('sidebarCollapsed') === '1') {
+                h.classList.add('sidebar-collapsed');
+            }
+        } catch (e) {}
+    })();
+</script>
+<style>
+    /* Critical layout inlined in <head> so navigation between pages does not
+       flash unstyled content before the Tailwind CDN script has scanned the
+       DOM and injected utility classes. Keep this block self-contained: no
+       dependency on Tailwind at all. */
+    #app-sidebar {
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 50;
+        width: 16rem;
+        display: flex;
+        flex-direction: column;
+        background: #ffffff;
+        border-right: 1px solid rgb(229 231 235);
+        transform: translateX(-100%);
+        transition: transform 200ms ease-out, width 200ms ease-out;
+    }
+    html.dark #app-sidebar {
+        background: rgb(3 7 18);
+        border-right-color: rgb(31 41 55);
+    }
+    .main-wrapper {
+        flex: 1 1 0%;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        transition: margin-left 200ms ease-out;
+    }
+    #sidebar-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 40;
+        background: rgb(17 24 39 / 0.5);
+    }
+
+    .sidebar-brand {
+        height: 4rem;
+        padding: 0 1.25rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        border-bottom: 1px solid rgb(229 231 235);
+        flex-shrink: 0;
+        text-decoration: none;
+        color: inherit;
+        transition: background-color 150ms;
+    }
+    html.dark .sidebar-brand { border-bottom-color: rgb(31 41 55); }
+    .sidebar-brand:hover { background-color: rgb(249 250 251); }
+    html.dark .sidebar-brand:hover { background-color: rgb(17 24 39); }
+
+    .sidebar-link {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.5rem 0.75rem;
+        border-radius: 0.5rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: rgb(75 85 99);
+        transition: background-color 150ms, color 150ms;
+    }
+    html.dark .sidebar-link { color: rgb(209 213 219); }
+    .sidebar-link:hover { background-color: rgb(243 244 246); color: rgb(17 24 39); }
+    html.dark .sidebar-link:hover { background-color: rgb(31 41 55); color: rgb(255 255 255); }
+    .sidebar-link.is-active {
+        background: linear-gradient(to bottom right, rgb(79 70 229), rgb(67 56 202));
+        color: rgb(255 255 255);
+        box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+        font-weight: 600;
+    }
+    .sidebar-link.is-active:hover {
+        background: linear-gradient(to bottom right, rgb(99 102 241), rgb(79 70 229));
+        color: rgb(255 255 255);
+    }
+    .sidebar-icon {
+        height: 1.125rem;
+        width: 1.125rem;
+        flex-shrink: 0;
+    }
+    .sidebar-collapse-icon { transition: transform 200ms ease-out; }
+
+    /* Desktop: pin the sidebar open, offset main content, support rail mode.
+       Rail mode is desktop-only; mobile drawer keeps its full-width layout
+       regardless of the persisted collapsed flag. */
+    @media (min-width: 1024px) {
+        #app-sidebar { transform: translateX(0); }
+        .main-wrapper { margin-left: 16rem; }
+
+        html.sidebar-collapsed #app-sidebar { width: 4rem; }
+        html.sidebar-collapsed .main-wrapper { margin-left: 4rem; }
+
+        html.sidebar-collapsed .sidebar-brand-text,
+        html.sidebar-collapsed .sidebar-section,
+        html.sidebar-collapsed .sidebar-label,
+        html.sidebar-collapsed .sidebar-footer-text,
+        html.sidebar-collapsed .sidebar-active-dot { display: none; }
+
+        html.sidebar-collapsed .sidebar-brand {
+            padding-left: 0;
+            padding-right: 0;
+            justify-content: center;
+        }
+        html.sidebar-collapsed .sidebar-link {
+            justify-content: center;
+            padding: 0.5rem;
+            gap: 0;
+        }
+        html.sidebar-collapsed .sidebar-footer-card {
+            justify-content: center;
+            gap: 0;
+            padding: 0.5rem;
+        }
+    }
+
+    /* Mobile drawer open state; toggled by window.toggleSidebar. */
+    @media (max-width: 1023.98px) {
+        #app-sidebar.sidebar-mobile-open { transform: translateX(0); }
+    }
+</style>
+{{end}}
+
+{{define "sidebar"}}
+<div id="sidebar-backdrop" onclick="toggleSidebar()" class="lg:hidden hidden"></div>
+
+<aside id="app-sidebar" data-sidebar-root>
+    <a href="/" class="sidebar-brand" aria-label="Ana sayfa">
+        <span class="sidebar-brand-logo inline-flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-700 text-white shadow-sm ring-1 ring-indigo-600/20 shrink-0">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.657 4.03 3 9 3s9-1.343 9-3V5"/><path d="M3 12c0 1.657 4.03 3 9 3s9-1.343 9-3"/></svg>
+        </span>
+        <div class="sidebar-brand-text min-w-0">
+            <div class="text-sm font-bold tracking-tight text-gray-900 dark:text-white leading-tight">PGCluster<span class="text-indigo-600 dark:text-indigo-400">Manager</span></div>
+            <div class="text-[11px] text-gray-500 dark:text-gray-500 leading-tight">PostgreSQL Yönetim Paneli</div>
+        </div>
+    </a>
+
+    <nav class="flex-1 overflow-y-auto p-3 space-y-1">
+        <div class="sidebar-section px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">Genel Bakış</div>
+
+        <a href="/" title="Durum" class="sidebar-link group {{if eq . "status"}}is-active{{end}}">
+            <svg class="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            <span class="sidebar-label">Durum</span>
+            {{if eq . "status"}}<span class="sidebar-active-dot ml-auto h-1.5 w-1.5 rounded-full bg-white"></span>{{end}}
+        </a>
+
+        <a href="/topology" title="Topoloji" class="sidebar-link group {{if eq . "topology"}}is-active{{end}}">
+            <svg class="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="6.5" y1="6.5" x2="10" y2="10"/><line x1="17.5" y1="6.5" x2="14" y2="10"/><line x1="6.5" y1="17.5" x2="10" y2="14"/><line x1="17.5" y1="17.5" x2="14" y2="14"/></svg>
+            <span class="sidebar-label">Topoloji</span>
+            {{if eq . "topology"}}<span class="sidebar-active-dot ml-auto h-1.5 w-1.5 rounded-full bg-white"></span>{{end}}
+        </a>
+
+        <div class="sidebar-section px-3 pt-4 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">Performans</div>
+
+        <a href="/query-analytics" title="Sorgu Analizi" class="sidebar-link group {{if eq . "query-analytics"}}is-active{{end}}">
+            <svg class="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
+            <span class="sidebar-label">Sorgu Analizi</span>
+            {{if eq . "query-analytics"}}<span class="sidebar-active-dot ml-auto h-1.5 w-1.5 rounded-full bg-white"></span>{{end}}
+        </a>
+
+        <a href="/query" title="Aktif Sorgular" class="sidebar-link group {{if eq . "query"}}is-active{{end}}">
+            <svg class="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            <span class="sidebar-label">Aktif Sorgular</span>
+            {{if eq . "query"}}<span class="sidebar-active-dot ml-auto h-1.5 w-1.5 rounded-full bg-white"></span>{{end}}
+        </a>
+
+        <div class="sidebar-section px-3 pt-4 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">Yönetim</div>
+
+        <a href="/users" title="Kullanıcılar" class="sidebar-link group {{if eq . "users"}}is-active{{end}}">
+            <svg class="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span class="sidebar-label">Kullanıcılar</span>
+            {{if eq . "users"}}<span class="sidebar-active-dot ml-auto h-1.5 w-1.5 rounded-full bg-white"></span>{{end}}
+        </a>
+    </nav>
+
+    <div class="sidebar-footer p-3 border-t border-gray-200 dark:border-gray-800 shrink-0">
+        <div class="sidebar-footer-card flex items-center gap-3 rounded-lg bg-gray-50 dark:bg-gray-900 px-3 py-2.5 ring-1 ring-inset ring-gray-200 dark:ring-gray-800">
+            <span class="relative flex h-2 w-2 shrink-0">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <div class="sidebar-footer-text min-w-0 text-xs">
+                <div class="font-semibold text-gray-900 dark:text-white">Canlı izleme</div>
+                <div class="text-gray-500 dark:text-gray-400 truncate">Her 30 saniyede yenilenir</div>
+            </div>
+        </div>
+    </div>
+
+    <button
+        id="sidebar-collapse-btn"
+        type="button"
+        onclick="toggleSidebarCollapse()"
+        aria-label="Kenar çubuğunu daralt/genişlet"
+        title="Kenar çubuğunu daralt/genişlet"
+        class="hidden lg:flex absolute top-20 -right-3 z-10 h-6 w-6 items-center justify-center rounded-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white hover:border-gray-300 dark:hover:border-gray-600 transition-colors">
+        <svg class="sidebar-collapse-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="15 18 9 12 15 6"/>
+        </svg>
+    </button>
+</aside>
+
+<script>
+    (function() {
+        const LG = 1024;
+        const STORAGE_KEY = 'sidebarCollapsed';
+
+        function isCollapsed() {
+            return document.documentElement.classList.contains('sidebar-collapsed');
+        }
+
+        function applyCollapsed(next) {
+            document.documentElement.classList.toggle('sidebar-collapsed', next);
+            const icon = document.querySelector('.sidebar-collapse-icon');
+            if (icon) icon.style.transform = next ? 'rotate(180deg)' : '';
+        }
+
+        window.toggleSidebar = function() {
+            const sb = document.getElementById('app-sidebar');
+            const bd = document.getElementById('sidebar-backdrop');
+            if (!sb || !bd) return;
+            sb.classList.toggle('sidebar-mobile-open');
+            bd.classList.toggle('hidden');
+        };
+
+        window.toggleSidebarCollapse = function() {
+            const next = !isCollapsed();
+            applyCollapsed(next);
+            try { localStorage.setItem(STORAGE_KEY, next ? '1' : '0'); } catch (e) {}
+            // Notify pages whose content is size-dependent (e.g. topology
+            // connector SVGs) that the layout width has just changed.
+            window.dispatchEvent(new CustomEvent('sidebar:toggle', { detail: { collapsed: next } }));
+        };
+
+        // Keep the mobile drawer sane when the viewport crosses the lg
+        // breakpoint so it never gets stuck with a dangling backdrop or an
+        // open-drawer state after a resize.
+        function syncSidebarToViewport() {
+            const sb = document.getElementById('app-sidebar');
+            const bd = document.getElementById('sidebar-backdrop');
+            if (!sb || !bd) return;
+            if (window.innerWidth >= LG) {
+                sb.classList.remove('sidebar-mobile-open');
+                bd.classList.add('hidden');
+            }
+        }
+
+        // Reconcile the chevron rotation with the state the <head> FOUC
+        // script applied before this body script executes.
+        function syncChevron() {
+            const icon = document.querySelector('.sidebar-collapse-icon');
+            if (icon) icon.style.transform = isCollapsed() ? 'rotate(180deg)' : '';
+        }
+
+        window.addEventListener('resize', syncSidebarToViewport);
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                syncChevron();
+                syncSidebarToViewport();
+            });
+        } else {
+            syncChevron();
+            syncSidebarToViewport();
+        }
+    })();
+</script>
+{{end}}

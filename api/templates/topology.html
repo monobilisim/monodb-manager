@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="tr" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cluster Topolojisi</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    {{template "sidebar-head"}}
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Animated dashed stroke on SVG connection lines to suggest WAL flow
+           direction from leader -> replica. */
+        @keyframes wal-flow {
+            to { stroke-dashoffset: -24; }
+        }
+        .wal-line {
+            stroke-dasharray: 8 4;
+            animation: wal-flow 1.2s linear infinite;
+        }
+        /* Subtle skeleton pulse for first-load placeholders. */
+        @keyframes sk-pulse {
+            0%, 100% { opacity: 0.55; }
+            50%      { opacity: 0.85; }
+        }
+        .skeleton { animation: sk-pulse 1.4s ease-in-out infinite; }
+    </style>
+</head>
+<body class="h-full bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased" style="font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;">
+
+    <div class="flex min-h-screen">
+
+        {{template "sidebar" "topology"}}
+
+        <div class="main-wrapper flex-1 lg:ml-64 min-w-0 flex flex-col">
+
+            <main class="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8 space-y-8">
+
+                <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                    <div class="flex items-start gap-3 min-w-0">
+                        <button onclick="toggleSidebar()" class="lg:hidden mt-1 rounded-md p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0" aria-label="Menü">
+                            <svg class="w-5 h-5" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                        </button>
+                        <div class="min-w-0">
+                            <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
+                                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="6.5" y1="6.5" x2="10" y2="10"/><line x1="17.5" y1="6.5" x2="14" y2="10"/><line x1="6.5" y1="17.5" x2="10" y2="14"/><line x1="17.5" y1="17.5" x2="14" y2="14"/></svg>
+                                Replikasyon Grafiği
+                            </div>
+                            <h1 class="mt-2 text-3xl sm:text-4xl font-bold tracking-tight text-gray-900 dark:text-white">Cluster Topolojisi</h1>
+                            <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">Canlı Patroni cluster üyeleri, rolleri ve replikasyon gecikmesi.</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 shrink-0">
+                        <span class="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-gray-100 dark:bg-gray-800 px-2.5 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                            <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            <span id="lastUpdated" style="font-family: 'JetBrains Mono', ui-monospace, monospace;">Yükleniyor&hellip;</span>
+                        </span>
+                        <div class="flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-1 shadow-sm">
+                            <button id="refreshBtn" onclick="fetchTopology(true)" title="Şimdi Yenile" aria-label="Şimdi Yenile" class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                            </button>
+                            <button onclick="toggleDarkMode()" title="Temayı değiştir" aria-label="Temayı değiştir" class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
+                                <svg class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                                </svg>
+                                <svg class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="staleBanner" class="hidden rounded-xl ring-1 ring-amber-300 dark:ring-amber-700/60 bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-200 px-4 py-3 text-sm">
+                    <span id="staleMessage">Topoloji yenilenemedi. Son bilinen veriler gösteriliyor.</span>
+                </div>
+
+                <section id="clusterContainer" class="space-y-8">
+                    <section class="skeleton rounded-xl shadow-sm ring-1 ring-gray-200 dark:ring-gray-800 bg-white dark:bg-gray-900 p-6">
+                        <div class="h-6 w-64 bg-gray-200 dark:bg-gray-800 rounded mb-4"></div>
+                        <div class="h-40 bg-gray-100 dark:bg-gray-900/50 rounded"></div>
+                    </section>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        // Tailwind config
+        tailwind.config = { darkMode: 'class' };
+        document.documentElement.classList.toggle('dark', localStorage.getItem('darkMode') === 'true');
+
+        function toggleDarkMode() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            localStorage.setItem('darkMode', isDark);
+            drawAllLines();
+        }
+
+
+        // Server-rendered HAProxy port list (mirrors the status page config).
+        // Exposed so the topology can surface a "Load Balancers" group beside
+        // the DB nodes, matching the ClusterControl layout.
+        const LB_PORTS = [
+            {{- range $i, $p := .HAPorts}}{{if $i}},{{end}}
+            { Port: {{.Port}}, Type: "{{.Type}}" }
+            {{- end}}
+        ];
+
+        // Escape HTML special chars so user-supplied strings (hostnames, member
+        // names from Patroni config) cannot inject markup.
+        function escHtml(s) {
+            return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[c]));
+        }
+
+        function formatBytes(n) {
+            n = Number(n) || 0;
+            const neg = n < 0;
+            n = Math.abs(n);
+            let out;
+            if (n < 1024) out = `${n} B`;
+            else if (n < 1024 ** 2) out = `${(n / 1024).toFixed(1)} KB`;
+            else if (n < 1024 ** 3) out = `${(n / 1024 ** 2).toFixed(1)} MB`;
+            else out = `${(n / 1024 ** 3).toFixed(2)} GB`;
+            return neg ? `-${out}` : out;
+        }
+
+        function lagColorClass(bytes) {
+            if (bytes < 1_000_000) return 'text-green-600 dark:text-green-400';
+            if (bytes < 10_000_000) return 'text-amber-600 dark:text-amber-400';
+            return 'text-red-600 dark:text-red-400';
+        }
+
+        // SVG stroke color (hex) for connection lines, matching lag severity.
+        function lagStrokeColor(bytes) {
+            if (bytes < 1_000_000) return '#16a34a';   // green-600
+            if (bytes < 10_000_000) return '#d97706';  // amber-600
+            return '#dc2626';                          // red-600
+        }
+
+        // Resolve the effective Patroni role as it would appear in
+        // `patronictl list`. The /cluster REST API reports plain "replica"
+        // for every follower regardless of synchronous_commit mode, so we
+        // upgrade the label using sync_state from pg_stat_replication when
+        // the replica is actually participating in synchronous commit.
+        function patroniRole(role, sync) {
+            const base = String(role || 'replica');
+            if (base === 'replica' && (sync === 'sync' || sync === 'quorum')) {
+                return sync === 'quorum' ? 'quorum_standby' : 'sync_standby';
+            }
+            return base;
+        }
+
+        function roleBadge(role, sync) {
+            const label = patroniRole(role, sync);
+            let cls;
+            if (label === 'leader' || label === 'master' || label === 'primary') {
+                cls = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 ring-1 ring-inset ring-emerald-200 dark:ring-emerald-800';
+            } else if (label === 'standby_leader') {
+                cls = 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/60 dark:text-indigo-200 ring-1 ring-inset ring-indigo-200 dark:ring-indigo-800';
+            } else if (label === 'sync_standby' || label === 'quorum_standby') {
+                cls = 'bg-sky-100 text-sky-800 dark:bg-sky-900/60 dark:text-sky-200 ring-1 ring-inset ring-sky-200 dark:ring-sky-800';
+            } else {
+                cls = 'bg-teal-100 text-teal-800 dark:bg-teal-900/60 dark:text-teal-200 ring-1 ring-inset ring-teal-200 dark:ring-teal-800';
+            }
+            return `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${cls}">${escHtml(label)}</span>`;
+        }
+
+        // Map Patroni member state -> visual accent for dot + card border so
+        // a running async replica is visibly "alive" (green), not the old
+        // gray which looked offline at a glance.
+        function stateAccent(state) {
+            const s = String(state || '').toLowerCase();
+            if (s === 'running' || s === 'streaming') {
+                return {
+                    dot: 'bg-emerald-500',
+                    ping: 'bg-emerald-400',
+                    ring: 'ring-emerald-200 dark:ring-emerald-800/70',
+                    pulse: true
+                };
+            }
+            if (s === 'starting' || s === 'catchup') {
+                return {
+                    dot: 'bg-amber-500',
+                    ping: 'bg-amber-400',
+                    ring: 'ring-amber-200 dark:ring-amber-800/70',
+                    pulse: true
+                };
+            }
+            if (s === 'stopped' || s === 'crashed') {
+                return {
+                    dot: 'bg-red-500',
+                    ping: 'bg-red-400',
+                    ring: 'ring-red-200 dark:ring-red-800/70',
+                    pulse: false
+                };
+            }
+            return {
+                dot: 'bg-gray-400 dark:bg-gray-500',
+                ping: 'bg-gray-300',
+                ring: 'ring-gray-200 dark:ring-gray-700',
+                pulse: false
+            };
+        }
+
+        function stateBadge(state) {
+            if (!state) return '';
+            const s = String(state).toLowerCase();
+            let cls = 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200';
+            if (s === 'running' || s === 'streaming') {
+                cls = 'bg-green-50 text-green-700 dark:bg-green-900/50 dark:text-green-300';
+            } else if (s === 'starting' || s === 'catchup' || s === 'restarting'
+                    || s === 'creating replica' || s === 'in archive recovery'
+                    || s === 'restore running') {
+                cls = 'bg-amber-50 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300';
+            } else if (s === 'stopped' || s === 'stopping' || s === 'crashed') {
+                cls = 'bg-red-50 text-red-700 dark:bg-red-900/50 dark:text-red-300';
+            }
+            return `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${cls}">${escHtml(state)}</span>`;
+        }
+
+        // Icon set for node card actions. Small inline SVGs so no extra requests.
+        const ICON_EXT = `<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`;
+        const ICON_GEAR = `<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
+        const ICON_CHECK = `<svg class="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>`;
+
+        // Plain-text variant of the role for the "(role)" hint next to the
+        // node's address in the card header. Mirrors the badge logic.
+        function roleLabel(role, sync) {
+            return patroniRole(role, sync);
+        }
+
+        // Render a single DB node (master or slave) in the ClusterControl style:
+        // green-bordered card with a header bar (check+address+role+icons) and a
+        // key-value body. Works for both leader and replica; pass `isLeader` to
+        // switch which rows are shown.
+        function renderNodeCard(member, isLeader) {
+            const accent = stateAccent(member.state);
+            const ring = (member.state === 'running' || member.state === 'streaming')
+                ? 'ring-emerald-500 dark:ring-emerald-500/80'
+                : (member.state === 'stopped' || member.state === 'crashed')
+                    ? 'ring-red-500 dark:ring-red-500/80'
+                    : (member.state === 'starting' || member.state === 'catchup')
+                        ? 'ring-amber-500 dark:ring-amber-500/80'
+                        : 'ring-gray-300 dark:ring-gray-700';
+
+            const checkColor = (member.state === 'running' || member.state === 'streaming')
+                ? 'text-emerald-500'
+                : (member.state === 'stopped' || member.state === 'crashed')
+                    ? 'text-red-500'
+                    : (member.state === 'starting' || member.state === 'catchup')
+                        ? 'text-amber-500'
+                        : 'text-gray-400';
+
+            const addr = `${escHtml(member.host)}:${escHtml(member.port)}`;
+            const roleTxt = roleLabel(member.role, member.sync_state);
+
+            // Attempt to build a direct URL for the external-link icon. Patroni
+            // exposes a REST API on 8008 by default; we link there so operators
+            // can open the node's API quickly.
+            const patroniURL = `http://${escHtml(member.host)}:8008/`;
+
+            const rows = [];
+            rows.push(`
+                <div class="grid grid-cols-[9rem_1fr] gap-x-4 gap-y-1.5 items-center">
+                    <dt class="text-xs text-gray-500 dark:text-gray-400">Durum</dt>
+                    <dd>${stateBadge(member.state)}</dd>
+                    <dt class="text-xs text-gray-500 dark:text-gray-400">Zaman Çizelgesi</dt>
+                    <dd class="font-mono text-sm text-gray-900 dark:text-white">${escHtml(member.timeline ?? 0)}</dd>
+                    <dt class="text-xs text-gray-500 dark:text-gray-400">Rol Etiketi</dt>
+                    <dd>${roleBadge(member.role, member.sync_state)}</dd>
+            `);
+
+            if (!isLeader) {
+                const lagBytes = Number(member.lag_bytes || 0);
+                const lagSecs = Number(member.lag_seconds || 0);
+                const lagCls = lagColorClass(lagBytes);
+                rows.push(`
+                    <dt class="text-xs text-gray-500 dark:text-gray-400">Replikasyon</dt>
+                    <dd class="text-sm font-medium text-gray-900 dark:text-white">streaming</dd>
+                    <dt class="text-xs text-gray-500 dark:text-gray-400">Sync State</dt>
+                    <dd class="font-mono text-sm text-gray-900 dark:text-white">${escHtml(member.sync_state || 'async')}</dd>
+                    <dt class="text-xs text-gray-500 dark:text-gray-400">Gecikme</dt>
+                    <dd class="font-mono text-sm font-semibold ${lagCls}">${formatBytes(lagBytes)} · ${lagSecs}sn</dd>
+                `);
+            }
+            rows.push(`</div>`);
+
+            const roleKey = isLeader ? 'leader' : 'replica';
+            const cardClass = isLeader ? 'leader-card' : 'replica-card';
+
+            return `
+                <div data-node-id="${escHtml(member.name)}" data-node-role="${roleKey}"
+                     data-lag-bytes="${escHtml(Number(member.lag_bytes || 0))}"
+                     data-lag-label="${escHtml(formatBytes(Number(member.lag_bytes || 0)))}"
+                     class="${cardClass} node-card relative rounded-lg shadow-sm ring-2 ${ring} bg-white dark:bg-gray-800 overflow-hidden">
+                    <header class="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-gray-100 dark:border-gray-700/60 bg-gray-50/50 dark:bg-gray-900/40">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <span class="${checkColor} shrink-0">${ICON_CHECK}</span>
+                            <span class="font-mono text-sm font-bold text-gray-900 dark:text-white truncate">${addr}</span>
+                            <span class="text-xs text-gray-500 dark:text-gray-400 truncate">(${escHtml(roleTxt)})</span>
+                        </div>
+                        <div class="flex items-center gap-1 shrink-0 text-gray-400 dark:text-gray-500">
+                            <a href="${patroniURL}" target="_blank" rel="noopener" title="Patroni API'sini Aç" class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">${ICON_EXT}</a>
+                            <button type="button" title="Node Ayarları" aria-label="Node Ayarları" class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">${ICON_GEAR}</button>
+                        </div>
+                    </header>
+                    <div class="px-4 py-3 text-sm">
+                        ${rows.join('')}
+                    </div>
+                    <footer class="flex items-center justify-center border-t border-gray-100 dark:border-gray-700/60 py-1 text-gray-400 dark:text-gray-500">
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </footer>
+                </div>
+            `;
+        }
+
+        function renderLeaderCard(leader) {
+            if (!leader) {
+                return `<div class="rounded-lg shadow-sm ring-2 ring-amber-300 dark:ring-amber-700 bg-amber-50 dark:bg-amber-950 p-5 text-amber-800 dark:text-amber-200 text-sm">
+                    Patroni tarafından lider bildirilmedi.
+                </div>`;
+            }
+            return renderNodeCard(leader, true);
+        }
+
+        function renderReplicaCard(rep) {
+            return renderNodeCard(rep, false);
+        }
+
+        // Load Balancer mini-card. Address + role + check, mirrors node-card
+        // look & feel but with fewer rows (no replication info).
+        function renderLoadBalancerCard(port) {
+            return `
+                <div data-lb-port="${escHtml(port.Port)}"
+                     class="lb-card node-card relative rounded-lg shadow-sm ring-2 ring-emerald-500 dark:ring-emerald-500/80 bg-white dark:bg-gray-800 overflow-hidden">
+                    <header class="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-gray-100 dark:border-gray-700/60 bg-gray-50/50 dark:bg-gray-900/40">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <span class="text-emerald-500 shrink-0">${ICON_CHECK}</span>
+                            <span class="font-mono text-sm font-bold text-gray-900 dark:text-white truncate">:${escHtml(port.Port)}</span>
+                            <span class="text-xs text-gray-500 dark:text-gray-400 truncate">(HAProxy)</span>
+                        </div>
+                    </header>
+                    <div class="px-4 py-3 text-sm">
+                        <div class="grid grid-cols-[5rem_1fr] gap-x-4 gap-y-1.5 items-center">
+                            <dt class="text-xs text-gray-500 dark:text-gray-400">Tür</dt>
+                            <dd class="text-sm text-gray-900 dark:text-white">${escHtml(port.Type)}</dd>
+                            <dt class="text-xs text-gray-500 dark:text-gray-400">Port</dt>
+                            <dd class="font-mono text-sm font-medium text-gray-900 dark:text-white">${escHtml(port.Port)}</dd>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Render the whole cluster layout: optional Load Balancers group on the
+        // left (pulled from server-rendered HAPorts) and the DB Nodes group on
+        // the right. Mirrors the ClusterControl topology layout.
+        function renderClusterCard(server) {
+            if (server.error) {
+                return `
+                    <section class="rounded-xl shadow-sm ring-1 ring-gray-200 dark:ring-gray-700 bg-white dark:bg-gray-800 p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">${escHtml(server.name)}</h2>
+                        </div>
+                        <div class="rounded-lg ring-1 ring-red-300 dark:ring-red-700 bg-red-50 dark:bg-red-950 text-red-800 dark:text-red-200 px-4 py-3 text-sm">
+                            <div class="font-semibold mb-1">Cluster keşfedilemedi</div>
+                            <div class="font-mono text-xs break-all">${escHtml(server.error)}</div>
+                        </div>
+                    </section>
+                `;
+            }
+
+            const members = Array.isArray(server.members) ? server.members : [];
+            const leader = members.find(m => m.role === 'leader')
+                        || members.find(m => m.name === server.leader)
+                        || null;
+            const replicas = members.filter(m => m !== leader);
+
+            replicas.sort((a, b) => {
+                const rank = r => (r.sync_state === 'sync' ? 0 : r.sync_state === 'quorum' ? 1 : 2);
+                const d = rank(a) - rank(b);
+                return d !== 0 ? d : String(a.name).localeCompare(String(b.name));
+            });
+
+            const timeline = leader ? (leader.timeline ?? 0) : 0;
+
+            const replicaHTML = replicas.length
+                ? replicas.map(renderReplicaCard).join('')
+                : `<div class="rounded-lg ring-1 ring-dashed ring-gray-300 dark:ring-gray-600 bg-gray-50 dark:bg-gray-900 p-5 text-sm text-gray-500 dark:text-gray-400">Hiç replika bildirilmedi.</div>`;
+
+            const lbHTML = LB_PORTS.length
+                ? LB_PORTS.map(renderLoadBalancerCard).join('')
+                : '';
+
+            const lbBlock = lbHTML
+                ? `
+                    <div class="lb-group group-box flex-1 min-w-0 rounded-xl ring-1 ring-dashed ring-gray-300 dark:ring-gray-700 bg-gray-50/60 dark:bg-gray-900/40 p-5">
+                        <div class="text-xs font-bold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400 mb-4">Yük Dengeleyiciler</div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-3">${lbHTML}</div>
+                    </div>
+                `
+                : '';
+
+            return `
+                <section data-cluster="${escHtml(server.name)}" class="cluster-card relative rounded-xl shadow-sm ring-1 ring-gray-200 dark:ring-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
+                    <header class="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                        <h2 class="text-lg font-bold tracking-tight text-gray-900 dark:text-white uppercase">${escHtml(server.name)} Topolojisi</h2>
+                        <div class="flex flex-wrap items-center gap-2 text-xs">
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 ring-1 ring-inset ring-emerald-200 dark:ring-emerald-800">
+                                lider: <span class="font-mono font-semibold">${escHtml(server.leader || '—')}</span>
+                            </span>
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200 ring-1 ring-inset ring-gray-200 dark:ring-gray-700">
+                                zaman çizelgesi: <span class="font-mono">${escHtml(timeline)}</span>
+                            </span>
+                            <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200 ring-1 ring-inset ring-gray-200 dark:ring-gray-700">
+                                ${members.length} node
+                            </span>
+                        </div>
+                    </header>
+
+                    <div class="relative px-6 py-8">
+                        <svg class="connections-svg absolute inset-0 w-full h-full pointer-events-none" aria-hidden="true">
+                            <defs>
+                                <marker id="arrow-${escHtml(server.name).replace(/[^a-z0-9]/gi, '-')}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                                    <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+                                </marker>
+                            </defs>
+                        </svg>
+
+                        <div class="relative flex flex-col xl:flex-row gap-6 xl:gap-10 items-stretch">
+                            ${lbBlock}
+                            <div class="db-group group-box flex-[2] min-w-0 rounded-xl ring-1 ring-dashed ring-gray-300 dark:ring-gray-700 bg-gray-50/60 dark:bg-gray-900/40 p-5">
+                                <div class="text-xs font-bold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400 mb-4">Veritabanı Node'ları</div>
+                                <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-6 items-start">
+                                    <div class="leader-col">
+                                        ${renderLeaderCard(leader)}
+                                    </div>
+                                    <div class="replica-col grid grid-cols-1 gap-4">
+                                        ${replicaHTML}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            `;
+        }
+
+        // Draw connection lines:
+        //   LB card -> Leader card   (horizontal, neutral-colored, with endpoint circles)
+        //   Leader  -> each Replica  (curved, lag-colored, arrow-terminated)
+        function drawClusterLines(section) {
+            const svg = section.querySelector('.connections-svg');
+            if (!svg) return;
+            const leaderEl = section.querySelector('.leader-card');
+            const replicas = section.querySelectorAll('.replica-card');
+            const lbCards = section.querySelectorAll('.lb-card');
+
+            const wrapper = svg.parentElement;
+            const wrapRect = wrapper.getBoundingClientRect();
+            const w = Math.max(1, wrapRect.width);
+            const h = Math.max(1, wrapRect.height);
+            svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+            svg.setAttribute('width', w);
+            svg.setAttribute('height', h);
+
+            const arrowId = `arrow-${(section.dataset.cluster || 'x').replace(/[^a-z0-9]/gi, '-')}`;
+            const parts = [];
+            parts.push(`<defs>
+                <marker id="${arrowId}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b7280"></path>
+                </marker>
+            </defs>`);
+
+            if (!leaderEl) {
+                svg.innerHTML = parts.join('');
+                return;
+            }
+
+            const lRect = leaderEl.getBoundingClientRect();
+            const leaderLeftX = lRect.left - wrapRect.left;
+            const leaderRightX = lRect.right - wrapRect.left;
+            const leaderY = lRect.top + lRect.height / 2 - wrapRect.top;
+
+            lbCards.forEach(lb => {
+                const r = lb.getBoundingClientRect();
+                const startX = r.right - wrapRect.left;
+                const startY = r.top + r.height / 2 - wrapRect.top;
+                const endX = leaderLeftX;
+                const endY = leaderY;
+                const midX = (startX + endX) / 2;
+                parts.push(`<circle cx="${startX}" cy="${startY}" r="3" fill="#9ca3af"></circle>`);
+                parts.push(`<path d="M ${startX} ${startY} L ${midX} ${startY} L ${midX} ${endY} L ${endX} ${endY}" fill="none" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="4 3"></path>`);
+                parts.push(`<circle cx="${endX}" cy="${endY}" r="3" fill="#9ca3af"></circle>`);
+            });
+
+            replicas.forEach(rep => {
+                const rRect = rep.getBoundingClientRect();
+                const rx = rRect.left - wrapRect.left;
+                const ry = rRect.top + rRect.height / 2 - wrapRect.top;
+                const lagBytes = Number(rep.dataset.lagBytes || 0);
+                const stroke = lagStrokeColor(lagBytes);
+                const label = rep.dataset.lagLabel || '';
+
+                const dx = Math.max(40, (rx - leaderRightX) * 0.5);
+                const d = `M ${leaderRightX} ${leaderY} C ${leaderRightX + dx} ${leaderY}, ${rx - dx} ${ry}, ${rx - 6} ${ry}`;
+
+                parts.push(`<circle cx="${leaderRightX}" cy="${leaderY}" r="3" fill="${stroke}"></circle>`);
+                parts.push(`<path d="${d}" fill="none" stroke="${stroke}" stroke-width="2.5" class="wal-line" stroke-linecap="round" marker-end="url(#${arrowId})"></path>`);
+
+                const midX = (leaderRightX + rx) / 2;
+                const midY = (leaderY + ry) / 2 - 10;
+                if (label) {
+                    parts.push(`
+                        <g>
+                            <rect x="${midX - 32}" y="${midY - 10}" width="64" height="18" rx="9" ry="9"
+                                  fill="currentColor" class="text-white dark:text-gray-900" opacity="0.9" stroke="${stroke}" stroke-width="1"></rect>
+                            <text x="${midX}" y="${midY + 3}" text-anchor="middle"
+                                  font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+                                  font-size="10.5" font-weight="700" fill="${stroke}">${label}</text>
+                        </g>
+                    `);
+                }
+            });
+
+            svg.innerHTML = parts.join('');
+        }
+
+        function drawAllLines() {
+            document.querySelectorAll('.cluster-card').forEach(drawClusterLines);
+        }
+
+        // Re-render everything from the topology response.
+        let lastGeneratedAt = 0;
+        function renderTopology(data) {
+            const container = document.getElementById('clusterContainer');
+            const servers = (data && data.servers) || [];
+            lastGeneratedAt = Number(data && data.generated_at) || Math.floor(Date.now() / 1000);
+
+            if (servers.length === 0) {
+                container.innerHTML = `
+                    <section class="rounded-xl shadow-sm ring-1 ring-gray-200 dark:ring-gray-700 bg-white dark:bg-gray-800 p-10 text-center">
+                        <div class="text-gray-500 dark:text-gray-400">Yapılandırılmış cluster yok.</div>
+                    </section>
+                `;
+                return;
+            }
+
+            container.innerHTML = servers.map(renderClusterCard).join('');
+
+            // After innerHTML swap, attach lag dataset to replica cards for line
+            // drawing (we want to avoid re-parsing the HTML string).
+            servers.forEach(s => {
+                if (s.error) return;
+                const section = container.querySelector(`section[data-cluster="${cssEscape(s.name)}"]`);
+                if (!section) return;
+                (s.members || []).forEach(m => {
+                    if (m.role === 'leader') return;
+                    const card = section.querySelector(`.replica-card[data-node-id="${cssEscape(m.name)}"]`);
+                    if (!card) return;
+                    card.dataset.lagBytes = String(m.lag_bytes || 0);
+                    const bytes = Number(m.lag_bytes || 0);
+                    card.dataset.lagLabel = formatBytes(bytes);
+                });
+            });
+
+            drawAllLines();
+        }
+
+        // CSS.escape polyfill-ish for attribute selectors.
+        function cssEscape(s) {
+            if (window.CSS && CSS.escape) return CSS.escape(String(s));
+            return String(s).replace(/["\\]/g, '\\$&');
+        }
+
+        // Fetch + render with error handling. If `force` is true, clear the
+        // stale banner on success regardless.
+        async function fetchTopology(force) {
+            const banner = document.getElementById('staleBanner');
+            try {
+                const resp = await fetch('/api/v1/topology', { cache: 'no-store' });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await resp.json();
+                renderTopology(data);
+                banner.classList.add('hidden');
+                updateLastUpdatedLabel();
+            } catch (err) {
+                console.error('Topology fetch failed:', err);
+                document.getElementById('staleMessage').textContent =
+                    `Topoloji yenilenemedi (${err.message || err}). Son bilinen veriler gösteriliyor.`;
+                banner.classList.remove('hidden');
+            }
+        }
+
+        function updateLastUpdatedLabel() {
+            const el = document.getElementById('lastUpdated');
+            if (!lastGeneratedAt) {
+                el.textContent = 'Yükleniyor\u2026';
+                return;
+            }
+            const diff = Math.max(0, Math.floor(Date.now() / 1000) - lastGeneratedAt);
+            let text;
+            if (diff < 2) text = 'Az önce güncellendi';
+            else if (diff < 60) text = `${diff}sn önce güncellendi`;
+            else if (diff < 3600) text = `${Math.floor(diff / 60)}dk önce güncellendi`;
+            else text = `${Math.floor(diff / 3600)}sa önce güncellendi`;
+            el.textContent = text;
+        }
+
+        // Redraw on resize (debounced via requestAnimationFrame).
+        let resizeRAF = 0;
+        function onResize() {
+            if (resizeRAF) cancelAnimationFrame(resizeRAF);
+            resizeRAF = requestAnimationFrame(() => { resizeRAF = 0; drawAllLines(); });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchTopology(true);
+            setInterval(fetchTopology, 5000);
+            setInterval(updateLastUpdatedLabel, 1000);
+            window.addEventListener('resize', onResize);
+
+            // ResizeObserver on the container catches cases where card sizes
+            // change without a window resize (e.g. content-driven reflow, or
+            // the desktop sidebar collapsing and freeing up layout width).
+            if (window.ResizeObserver) {
+                const ro = new ResizeObserver(onResize);
+                ro.observe(document.getElementById('clusterContainer'));
+            }
+
+            // Also redraw once the sidebar rail transition settles, so the
+            // final-frame geometry matches the connector endpoints even if
+            // the ResizeObserver missed the last pixel.
+            window.addEventListener('sidebar:toggle', () => {
+                setTimeout(drawAllLines, 220);
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="tr" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PostgreSQL Durumu</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    {{template "sidebar-head"}}
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="h-full bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased" style="font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;">
+
+    <div class="flex min-h-screen">
+
+        {{template "sidebar" "status"}}
+
+        <div class="main-wrapper flex-1 lg:ml-64 min-w-0 flex flex-col">
+
+            <main class="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8 space-y-8">
+
+                <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                    <div class="flex items-start gap-3 min-w-0">
+                        <button onclick="toggleSidebar()" class="lg:hidden mt-1 rounded-md p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0" aria-label="Menü">
+                            <svg class="w-5 h-5" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                        </button>
+                        <div class="min-w-0">
+                            <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
+                                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9 9 4.03 9 9z"/></svg>
+                                Canlı Cluster Genel Bakışı
+                            </div>
+                            <h1 class="mt-2 text-3xl sm:text-4xl font-bold tracking-tight text-gray-900 dark:text-white">PostgreSQL Durumu</h1>
+                            <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">Cluster node'larınızdaki anlık sağlık, bağlantı portları ve servis durumu.</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 shrink-0">
+                        <span class="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 text-xs font-medium ring-1 ring-inset ring-emerald-200/60 dark:ring-emerald-800/60 whitespace-nowrap">
+                            <span class="relative flex h-2 w-2">
+                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                            </span>
+                            Her 30 sn'de yenilenir
+                        </span>
+                        <div class="flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-1 shadow-sm">
+                            <button id="refreshBtn" onclick="refreshStatusBadges()" title="Verileri yenile" aria-label="Verileri yenile" class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                            </button>
+                            <button onclick="toggleDarkMode()" title="Temayı değiştir" aria-label="Temayı değiştir" class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
+                                <svg class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                                </svg>
+                                <svg class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+
+                    <section id="haproxyPortsContainer" class="bg-white dark:bg-gray-900 rounded-xl shadow-sm ring-1 ring-gray-200 dark:ring-gray-800 overflow-hidden">
+                        <header class="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+                            <div>
+                                <h2 class="text-base font-semibold text-gray-900 dark:text-white">HAProxy PGSQL Bağlantı Portları</h2>
+                                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">HAProxy tarafından yayınlanan yönlendirme uç noktaları</p>
+                            </div>
+                            <span class="inline-flex items-center rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ring-indigo-200 dark:ring-indigo-800">HAProxy</span>
+                        </header>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                                <thead class="bg-gray-50 dark:bg-gray-900/50">
+                                    <tr>
+                                        <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-32">Port</th>
+                                        <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tür</th>
+                                        <th scope="col" class="px-6 py-3 text-right text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider w-44"><span class="sr-only">Durum</span></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="haproxyPortsTable" class="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
+                                    {{range .HAPorts}}
+                                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-white" style="font-family: 'JetBrains Mono', ui-monospace, monospace;">{{.Port}}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">{{.Type}}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-right">
+                                            <span class="status-pill"
+                                                  data-badge-url="{{.Status}}"
+                                                  data-dashboard-url="{{.Status | replaceBadgeWithDashboard}}">
+                                                <span class="status-pill-inner">
+                                                    <span class="inline-flex items-center gap-2 rounded-lg bg-gray-200 dark:bg-gray-800 px-3 py-2 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 ring-1 ring-gray-300 dark:ring-gray-700">
+                                                        <span class="inline-flex h-2.5 w-2.5 rounded-full bg-gray-400 animate-pulse"></span>
+                                                        Kontrol ediliyor…
+                                                    </span>
+                                                </span>
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    {{end}}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section id="servicesContainer" class="bg-white dark:bg-gray-900 rounded-xl shadow-sm ring-1 ring-gray-200 dark:ring-gray-800 overflow-hidden">
+                        <header class="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+                            <div>
+                                <h2 class="text-base font-semibold text-gray-900 dark:text-white">Servis Durumu</h2>
+                                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Cluster genelinde node başına servis sağlığı</p>
+                            </div>
+                            <span class="inline-flex items-center rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ring-emerald-200 dark:ring-emerald-800">3 Node</span>
+                        </header>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                                <thead class="bg-gray-50 dark:bg-gray-900/50">
+                                    <tr>
+                                        <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Servis</th>
+                                        <th scope="col" class="px-4 py-3 text-center text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Node 1</th>
+                                        <th scope="col" class="px-4 py-3 text-center text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Node 2</th>
+                                        <th scope="col" class="px-4 py-3 text-center text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Node 3</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="servicesTable" class="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
+                                    {{range .Services}}
+                                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-white">{{.Name}}</td>
+                                        {{range .Nodes}}
+                                        <td class="px-4 py-4 whitespace-nowrap text-center">
+                                            <span class="status-pill"
+                                                  data-badge-url="{{.URL}}"
+                                                  data-dashboard-url="{{.URL | replaceBadgeWithDashboard}}">
+                                                <span class="status-pill-inner">
+                                                    <span class="inline-flex items-center gap-2 rounded-lg bg-gray-200 dark:bg-gray-800 px-3 py-2 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 ring-1 ring-gray-300 dark:ring-gray-700">
+                                                        <span class="inline-flex h-2.5 w-2.5 rounded-full bg-gray-400 animate-pulse"></span>
+                                                        …
+                                                    </span>
+                                                </span>
+                                            </span>
+                                        </td>
+                                        {{end}}
+                                    </tr>
+                                    {{end}}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                </div>
+
+                {{if .PMMStatusURL}}
+                <!-- Grafana embed: moved to bottom so critical health info is above the fold -->
+                <section id="pmmContainer" class="bg-white dark:bg-gray-900 rounded-xl shadow-sm ring-1 ring-gray-200 dark:ring-gray-800 overflow-hidden">
+                    <header class="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center gap-4">
+                        <div>
+                            <h2 class="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                                Cluster Detaylı İzleme
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold tracking-wider uppercase bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">Grafana</span>
+                            </h2>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Canlı PMM gösterge paneli · yeniden boyutlandırılabilir</p>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <a href="{{.PMMStatusURL | pmmOpenURL}}" target="_blank" rel="noopener noreferrer"
+                               title="Grafana'da Aç" aria-label="Grafana'da Aç"
+                               class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                </svg>
+                            </a>
+                            <button onclick="adjustIframeHeight('pmmIframe', 150)" title="Yüksekliği artır" aria-label="Yüksekliği artır" class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                                </svg>
+                            </button>
+                            <button onclick="adjustIframeHeight('pmmIframe', -150)" title="Yüksekliği azalt" aria-label="Yüksekliği azalt" class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+                                </svg>
+                            </button>
+                            <button onclick="toggleFullscreen('pmmIframe')" title="Tam Ekran" aria-label="Tam Ekran" class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" />
+                                </svg>
+                            </button>
+                        </div>
+                    </header>
+                    <div class="w-full iframe-container bg-gray-50 dark:bg-gray-950">
+                        <iframe
+                            id="pmmIframe"
+                            data-base-src="{{.PMMStatusURL | pmmEmbedURL}}"
+                            class="w-full border-0 resize-y"
+                            style="min-height: 480px; height: 520px;"
+                            allow="fullscreen">
+                        </iframe>
+                        <div class="resize-handle" onmousedown="initResize('pmmIframe', event)"></div>
+                    </div>
+                </section>
+                {{end}}
+            </main>
+        </div>
+    </div>
+
+    <script>
+        // Tailwind config
+        tailwind.config = {
+            darkMode: 'class'
+        }
+
+        // Check for dark mode preference on load
+        document.documentElement.classList.toggle('dark', localStorage.getItem('darkMode') === 'true');
+
+        // Sync embedded Grafana iframes to the current light/dark theme by
+        // injecting ?theme=light|dark into the iframe URL. Initial src is set
+        // here (data-base-src carries the clean URL) so the iframe never has
+        // to load with the wrong theme and then reload.
+        function applyGrafanaTheme() {
+            const isDark = document.documentElement.classList.contains('dark');
+            const theme = isDark ? 'dark' : 'light';
+            document.querySelectorAll('iframe[data-base-src]').forEach(iframe => {
+                try {
+                    const u = new URL(iframe.dataset.baseSrc);
+                    u.searchParams.set('theme', theme);
+                    const newSrc = u.toString();
+                    if (iframe.src !== newSrc) {
+                        iframe.src = newSrc;
+                    }
+                } catch (e) {
+                    console.warn('Invalid Grafana iframe URL:', iframe.dataset.baseSrc, e);
+                }
+            });
+        }
+        // Populate iframe src with the initial theme as soon as the DOM is ready.
+        document.addEventListener('DOMContentLoaded', applyGrafanaTheme);
+
+        function toggleDarkMode() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            localStorage.setItem('darkMode', isDark);
+            applyGrafanaTheme();
+        }
+
+
+        async function resolveStatus(url) {
+            try {
+                const u = new URL(url, window.location.origin);
+                u.searchParams.set('t', Date.now());
+                const res = await fetch(u.toString(), { cache: 'no-store', credentials: 'omit' });
+                if (!res.ok) return { state: 'unknown', raw: `HTTP ${res.status}` };
+                const text = await res.text();
+                const plain = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+                // Order matters: check "down" markers first so tokens like
+                // "setup"/"backup" cannot accidentally match the "up" branch.
+                if (/\b(down|offline|unhealthy|error|failed|fail)\b/.test(plain)) {
+                    return { state: 'down', raw: plain };
+                }
+                if (/\b(up|online|healthy|ok|success|running)\b/.test(plain)) {
+                    return { state: 'up', raw: plain };
+                }
+                return { state: 'unknown', raw: plain };
+            } catch (e) {
+                return { state: 'unknown', raw: String(e) };
+            }
+        }
+
+        function renderPillHTML(state, dashboardUrl) {
+            const href = dashboardUrl || '#';
+            if (state === 'up') {
+                return `
+                    <a href="${href}" target="_blank" rel="noopener"
+                       class="group inline-flex items-center gap-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 dark:from-emerald-500 dark:to-emerald-700 px-3.5 py-2 text-xs font-extrabold uppercase tracking-wider text-white shadow-md shadow-emerald-500/30 dark:shadow-emerald-900/40 ring-1 ring-emerald-600/50 hover:from-emerald-400 hover:to-emerald-500 transition-all">
+                        <span class="relative flex h-2.5 w-2.5">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
+                        </span>
+                        Çalışıyor
+                    </a>
+                `;
+            }
+            if (state === 'down') {
+                return `
+                    <a href="${href}" target="_blank" rel="noopener"
+                       class="inline-flex items-center gap-2 rounded-lg bg-gradient-to-br from-red-500 to-red-600 dark:from-red-500 dark:to-red-700 px-3.5 py-2 text-xs font-extrabold uppercase tracking-wider text-white shadow-md shadow-red-500/30 dark:shadow-red-900/40 ring-1 ring-red-600/50 hover:from-red-400 hover:to-red-500 transition-all">
+                        <span class="relative flex h-2.5 w-2.5">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
+                        </span>
+                        Çalışmıyor
+                    </a>
+                `;
+            }
+            return `
+                <a href="${href}" target="_blank" rel="noopener"
+                   class="inline-flex items-center gap-2 rounded-lg bg-gray-200 dark:bg-gray-800 px-3.5 py-2 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300 ring-1 ring-gray-300 dark:ring-gray-700 hover:bg-gray-300 dark:hover:bg-gray-700 transition-all">
+                    <span class="inline-flex h-2.5 w-2.5 rounded-full bg-gray-400 animate-pulse"></span>
+                    Bilinmiyor
+                </a>
+            `;
+        }
+
+        async function refreshSinglePill(pillEl) {
+            const badgeUrl = pillEl.getAttribute('data-badge-url');
+            const dashboardUrl = pillEl.getAttribute('data-dashboard-url');
+            if (!badgeUrl) return;
+            const inner = pillEl.querySelector('.status-pill-inner');
+            if (!inner) return;
+            const { state } = await resolveStatus(badgeUrl);
+            inner.innerHTML = renderPillHTML(state, dashboardUrl);
+        }
+
+        async function refreshStatusBadges() {
+            const pills = Array.from(document.querySelectorAll('.status-pill'));
+            const btn = document.getElementById('refreshBtn');
+            if (btn) btn.classList.add('animate-spin-slow');
+            await Promise.all(pills.map(refreshSinglePill));
+            if (btn) btn.classList.remove('animate-spin-slow');
+            refreshStats.successful += 1;
+            refreshStats.lastSuccess = Date.now();
+        }
+
+        function replaceBadgeWithDashboard(url) {
+            url = url.replace('/api/badge/', '/dashboard/');
+            url = url.replace(/\/status(?=\?|$)/, '');
+            if (url.indexOf('?') !== -1) {
+                url = url.substring(0, url.indexOf('?'));
+            }
+            return url;
+        }
+
+        let refreshStats = {
+            successful: 0,
+            failed: 0,
+            lastSuccess: null,
+            lastError: null
+        };
+
+        let badgeRefreshInterval;
+
+        function setupRefreshIntervals() {
+            if (badgeRefreshInterval) clearInterval(badgeRefreshInterval);
+            badgeRefreshInterval = setInterval(() => {
+                refreshStatusBadges();
+            }, 30000);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            refreshStatusBadges();
+            setupRefreshIntervals();
+
+            window.addEventListener('online', () => {
+                refreshStatusBadges();
+            });
+        });
+
+        function adjustIframeHeight(iframeId, change) {
+            const iframe = document.getElementById(iframeId);
+            if (iframe) {
+                const currentHeight = parseInt(iframe.style.height);
+                const newHeight = Math.max(300, currentHeight + change);
+                iframe.style.height = newHeight + 'px';
+            }
+        }
+
+        function toggleFullscreen(iframeId) {
+            const iframe = document.getElementById(iframeId);
+            if (iframe) {
+                if (!document.fullscreenElement) {
+                    if (iframe.requestFullscreen) {
+                        iframe.requestFullscreen();
+                    } else if (iframe.webkitRequestFullscreen) {
+                        iframe.webkitRequestFullscreen();
+                    } else if (iframe.msRequestFullscreen) {
+                        iframe.msRequestFullscreen();
+                    }
+                } else {
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen();
+                    } else if (document.webkitExitFullscreen) {
+                        document.webkitExitFullscreen();
+                    } else if (document.msExitFullscreen) {
+                        document.msExitFullscreen();
+                    }
+                }
+            }
+        }
+
+        let resizeTarget = null;
+        let initialY = 0;
+        let initialHeight = 0;
+
+        function initResize(iframeId, event) {
+            resizeTarget = document.getElementById(iframeId);
+            if (resizeTarget) {
+                initialY = event.clientY;
+                initialHeight = parseInt(resizeTarget.style.height);
+                document.addEventListener('mousemove', doResize);
+                document.addEventListener('mouseup', stopResize);
+            }
+            event.preventDefault();
+        }
+
+        function doResize(event) {
+            if (resizeTarget) {
+                const dy = event.clientY - initialY;
+                const newHeight = Math.max(300, initialHeight + dy);
+                resizeTarget.style.height = newHeight + 'px';
+            }
+        }
+
+        function stopResize() {
+            resizeTarget = null;
+            document.removeEventListener('mousemove', doResize);
+            document.removeEventListener('mouseup', stopResize);
+        }
+    </script>
+
+    <style>
+        .iframe-container {
+            position: relative;
+        }
+
+        .resize-handle {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 6px;
+            background-color: transparent;
+            cursor: ns-resize;
+        }
+
+        .resize-handle:hover {
+            background-color: rgba(99, 102, 241, 0.2);
+        }
+
+        .resize-y {
+            resize: vertical;
+        }
+
+        @keyframes spin-slow {
+            from { transform: rotate(0deg); }
+            to   { transform: rotate(360deg); }
+        }
+        .animate-spin-slow {
+            animation: spin-slow 1s linear infinite;
+        }
+    </style>
+</body>
+</html>

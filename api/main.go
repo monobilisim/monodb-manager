@@ -10,12 +10,11 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
 
-	"text/template"
+	"html/template"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
@@ -498,11 +497,8 @@ func getTemplatesDir(configuredPath string) string {
 			return templatesPath
 		}
 	}
-
-	// Fallback to source code location
-	_, b, _, _ := runtime.Caller(0)
-	basepath := filepath.Dir(b)
-	return filepath.Join(filepath.Dir(basepath), "templates", "*")
+	// No on-disk templates found; signal the caller to use embedded templates.
+	return ""
 }
 
 // buildUserFilterClause creates a SQL WHERE clause to filter out ignored users
@@ -946,10 +942,16 @@ func InitServer() {
 		},
 	})
 
-	// Then load the templates
-	templatesPath := getTemplatesDir(templatesDir)
-	log.Printf("Loading templates from: %s", templatesPath)
-	router.LoadHTMLGlob(templatesPath)
+	// Then load the templates: prefer on-disk templates (override), fall back
+	// to the templates embedded into the binary so releases are self-contained.
+	if diskGlob := getTemplatesDir(templatesDir); diskGlob != "" {
+		log.Printf("Loading templates from disk: %s", diskGlob)
+		router.LoadHTMLGlob(diskGlob)
+	} else {
+		log.Printf("Loading embedded templates")
+		tmpl := template.Must(template.New("").Funcs(router.FuncMap).ParseFS(embeddedTemplates, "templates/*.html"))
+		router.SetHTMLTemplate(tmpl)
+	}
 
 	// Load additional config if not already loaded from main config file
 	var haPorts []HAProxyPort

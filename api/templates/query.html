@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="tr" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PostgreSQL Aktif Sorgular</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    {{template "sidebar-head"}}
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="h-full bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased" style="font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;">
+
+    <div class="flex min-h-screen">
+
+        {{template "sidebar" "query"}}
+
+        <div class="main-wrapper flex-1 lg:ml-64 min-w-0 flex flex-col">
+
+            <main class="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8 space-y-8">
+
+        <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+            <div class="flex items-start gap-3 min-w-0">
+                <button onclick="toggleSidebar()" class="lg:hidden mt-1 rounded-md p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0" aria-label="Menü">
+                    <svg class="w-5 h-5" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                </button>
+                <div class="min-w-0">
+                    <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
+                        <span class="relative flex h-2 w-2">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                        </span>
+                        Canlı · her 2 saniyede bir yenilenir
+                    </div>
+                    <h1 class="mt-2 text-3xl sm:text-4xl font-bold tracking-tight text-gray-900 dark:text-white">Aktif Sorgular</h1>
+                    <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">Tüm cluster node'larında çalışan sorgular. <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-xs font-semibold ring-1 ring-inset ring-red-200 dark:ring-red-800">Sonlandır</span> seçeneğini dikkatli kullanın &mdash; ilgili PID'yi sonlandırır.</p>
+                </div>
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-stretch sm:items-end gap-3 shrink-0">
+                <div class="grid grid-cols-2 gap-3 sm:min-w-[22rem]">
+                    <div class="rounded-xl bg-white dark:bg-gray-900 ring-1 ring-gray-200 dark:ring-gray-800 px-4 py-3 shadow-sm">
+                        <div class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Aktif</div>
+                        <div class="mt-1 flex items-baseline gap-2">
+                            <div class="text-2xl font-bold text-gray-900 dark:text-white tabular-nums" style="font-family: 'JetBrains Mono', ui-monospace, monospace;">{{len .Queries}}</div>
+                            <div class="text-xs text-gray-500 dark:text-gray-400">sorgu</div>
+                        </div>
+                    </div>
+                    <div class="rounded-xl bg-white dark:bg-gray-900 ring-1 ring-gray-200 dark:ring-gray-800 px-4 py-3 shadow-sm">
+                        <div class="text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">En Uzun Süren</div>
+                        <div class="mt-1 text-2xl font-bold text-gray-900 dark:text-white tabular-nums truncate" style="font-family: 'JetBrains Mono', ui-monospace, monospace;">
+                            {{if .Queries}}{{with index .Queries 0}}{{.Duration}}{{end}}{{else}}&mdash;{{end}}
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-1 shadow-sm self-start sm:self-auto">
+                    <button id="refreshBtn" onclick="refreshQueries()" title="Sorguları yenile" aria-label="Sorguları yenile" class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                    </button>
+                    <button onclick="toggleDarkMode()" title="Temayı değiştir" aria-label="Temayı değiştir" class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
+                        <svg class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                        </svg>
+                        <svg class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        {{if .Queries}}
+        <section class="bg-white dark:bg-gray-900 rounded-xl shadow-sm ring-1 ring-gray-200 dark:ring-gray-800 overflow-hidden">
+            <header class="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+                <div>
+                    <h2 class="text-base font-semibold text-gray-900 dark:text-white">Çalışan Sorgular</h2>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">PID, veritabanı, kaynak üye, süre ve SQL</p>
+                </div>
+                <span class="inline-flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    <svg class="h-3.5 w-3.5 animate-spin text-indigo-500" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3" class="opacity-20"/><path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                    Canlı izleniyor
+                </span>
+            </header>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+                    <thead class="bg-gray-50 dark:bg-gray-900/50">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">PID</th>
+                            <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Kullanıcı Adı</th>
+                            <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Veritabanı</th>
+                            <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Üye</th>
+                            <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Süre</th>
+                            <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Sorgu</th>
+                            <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider sticky right-0 bg-gray-50 dark:bg-gray-900/80 backdrop-blur">İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody id="queriesTable" class="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
+                        {{range .Queries}}
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors" data-pid="{{.PID}}" data-server="{{.Server}}">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-white tabular-nums" style="font-family: 'JetBrains Mono', ui-monospace, monospace;">{{.PID}}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">{{.Username}}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 ring-1 ring-inset ring-blue-200/60 dark:ring-blue-800/60">{{.Database}}</span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
+                                <span class="font-medium text-gray-900 dark:text-white">{{.MemberName}}</span>
+                                <span class="ml-1 text-xs text-gray-500 dark:text-gray-400">({{.MemberRole}})</span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white tabular-nums" style="font-family: 'JetBrains Mono', ui-monospace, monospace;">{{.Duration}}</td>
+                            <td class="px-6 py-4 text-sm text-gray-900 dark:text-gray-200 align-top">
+                                <div class="max-w-md break-words whitespace-pre-wrap text-xs leading-relaxed" style="font-family: 'JetBrains Mono', ui-monospace, monospace;" title="{{.Query}}">{{.Query}}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm sticky right-0 bg-white dark:bg-gray-900">
+                                <button onclick="killQuery('{{.PID}}', '{{.Server}}')"
+                                    class="inline-flex items-center gap-1.5 rounded-md bg-red-50 dark:bg-red-900/30 px-3 py-1.5 text-xs font-semibold text-red-700 dark:text-red-300 ring-1 ring-inset ring-red-200 dark:ring-red-800 hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors">
+                                    <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                    Sonlandır
+                                </button>
+                            </td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        {{else}}
+        <!-- Designed empty state -->
+        <section class="bg-white dark:bg-gray-900 rounded-xl shadow-sm ring-1 ring-gray-200 dark:ring-gray-800 overflow-hidden">
+            <div class="relative px-6 py-20 text-center overflow-hidden">
+                <!-- Decorative background pattern -->
+                <div class="absolute inset-0 opacity-[0.04] dark:opacity-[0.06]" style="background-image: radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0); background-size: 24px 24px;"></div>
+                <div class="relative">
+                    <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-50 to-indigo-100 dark:from-indigo-900/40 dark:to-indigo-950/40 ring-1 ring-indigo-200/60 dark:ring-indigo-800/60 shadow-sm">
+                        <svg class="h-10 w-10 text-indigo-500 dark:text-indigo-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2a4 4 0 014-4h4m-4 4l-4-4 4-4" />
+                            <circle cx="12" cy="12" r="9" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </div>
+                    <h3 class="mt-6 text-xl font-semibold text-gray-900 dark:text-white">Aktif sorgu yok</h3>
+                    <p class="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto leading-relaxed">
+                        Cluster şu anda boşta. Birincil veya replika üzerinde çalışan sorgular PID, kaynak node ve geçen süreyle birlikte saniyeler içinde burada görünecek.
+                    </p>
+                    <div class="mt-8 flex items-center justify-center gap-3">
+                        <button onclick="refreshQueries()" class="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 transition-colors">
+                            <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            Şimdi Yenile
+                        </button>
+                        <a href="/query-analytics" class="inline-flex items-center gap-2 rounded-md bg-white dark:bg-gray-800 px-3.5 py-2 text-sm font-semibold text-gray-700 dark:text-gray-200 ring-1 ring-inset ring-gray-300 dark:ring-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                            Geçmiş QAN'ı görüntüle
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <!-- Empty table still rendered so refreshQueries() can target #queriesTable -->
+            <table class="hidden"><tbody id="queriesTable"></tbody></table>
+        </section>
+        {{end}}
+            </main>
+        </div>
+    </div>
+
+    <!-- Kill query confirmation modal -->
+    <div id="killModal" class="hidden fixed inset-0 z-50 bg-gray-900/60 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center">
+        <div class="bg-white dark:bg-gray-900 rounded-xl shadow-2xl ring-1 ring-gray-200 dark:ring-gray-800 max-w-md w-full mx-4">
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center gap-3">
+                <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 ring-1 ring-red-200 dark:ring-red-800">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                </span>
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white">Sorgu Sonlandırmayı Onayla</h3>
+            </div>
+            <div class="px-6 py-5">
+                <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                    <span id="killPid" class="font-semibold text-gray-900 dark:text-white tabular-nums" style="font-family: 'JetBrains Mono', ui-monospace, monospace;"></span>
+                    PID'li sorgu sonlandırılacak. Devam eden işlemler geri alınacaktır.
+                </p>
+            </div>
+            <div class="px-6 py-4 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-200 dark:border-gray-800 rounded-b-xl flex justify-end gap-3">
+                <button type="button"
+                    onclick="hideKillModal()"
+                    class="inline-flex justify-center px-4 py-2 text-sm font-semibold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 ring-1 ring-inset ring-gray-300 dark:ring-gray-700 rounded-md shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    İptal
+                </button>
+                <button type="button"
+                    id="confirmKill"
+                    class="inline-flex justify-center px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-md shadow-sm hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 dark:focus:ring-offset-gray-900 transition-colors">
+                    Sorguyu Sonlandır
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class'
+        }
+
+        // Check for dark mode preference on load
+        document.documentElement.classList.toggle('dark', localStorage.getItem('darkMode') === 'true');
+
+        function toggleDarkMode() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            localStorage.setItem('darkMode', isDark);
+        }
+
+
+        // Escape HTML special chars so user-supplied SQL cannot break out of
+        // the title attribute or inject markup into the table cell.
+        function escHtml(s) {
+            return String(s).replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[c]));
+        }
+
+        // Create table row HTML from query data
+        function createQueryRow(query) {
+            return `
+                <tr class="hover:bg-gray-50 dark:hover:bg-gray-700" data-pid="${query.pid}" data-server="${query.server}">
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${query.pid}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${query.username}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${query.database}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${query.member_name} (${query.member_role})</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">${query.duration}</td>
+                    <td class="px-6 py-4 text-sm text-gray-900 dark:text-white align-top">
+                        <div class="max-w-md break-words whitespace-pre-wrap" title="${escHtml(query.query)}">${escHtml(query.query)}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm sticky right-0 bg-white dark:bg-gray-800">
+                        <button onclick="killQuery('${query.pid}', '${query.server}')" 
+                            class="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 font-medium">
+                            Sonlandır
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }
+
+        // Function to refresh queries using AJAX
+        function refreshQueries() {
+            const refreshBtn = document.getElementById('refreshBtn');
+            // Show loading state
+            refreshBtn.classList.add('animate-spin');
+            
+            // Get current PIDs before refresh to track which queries have completed
+            const currentPids = Array.from(document.querySelectorAll('tr[data-pid]')).map(row => 
+                row.getAttribute('data-pid')
+            );
+            
+            fetch('/api/v1/queries')
+                .then(response => response.json())
+                .then(data => {
+                    const queriesTable = document.getElementById('queriesTable');
+                    if (queriesTable) {
+                        const newQueries = data.queries || [];
+                        // Get list of PIDs in the new data
+                        const newPids = newQueries.map(query => query.pid.toString());
+                        
+                        // Find PIDs that are no longer present (queries that completed)
+                        const completedPids = currentPids.filter(pid => !newPids.includes(pid));
+                        
+                        // Mark completed queries visually even if we're going to replace them
+                        completedPids.forEach(pid => {
+                            const row = document.querySelector(`tr[data-pid="${pid}"]`);
+                            if (row) {
+                                row.classList.add('bg-green-50', 'dark:bg-green-900');
+                                row.classList.add('line-through');
+                                row.style.opacity = '0.5';
+                                
+                                // Add a "Completed" label to make it super clear
+                                const statusCell = document.createElement('span');
+                                statusCell.className = 'ml-2 px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800 dark:bg-green-700 dark:text-green-100';
+                                statusCell.textContent = 'Tamamlandı';
+                                
+                                const actionCell = row.querySelector('td:last-child');
+                                if (actionCell) {
+                                    // Replace kill button with completed status
+                                    actionCell.innerHTML = '';
+                                    actionCell.appendChild(statusCell);
+                                }
+                            }
+                        });
+                        
+                        // Short delay to let the user see the completion status before updating
+                        setTimeout(() => {
+                            // Always update with the latest data
+                            let tableContent = '';
+                            for (const query of newQueries) {
+                                tableContent += createQueryRow(query);
+                            }
+                            
+                            if (tableContent.trim() === '') {
+                                // No active queries, show a message
+                                tableContent = `
+                                    <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
+                                        <td colspan="7" class="px-6 py-8 text-center text-gray-500 dark:text-gray-400">
+                                            <p class="text-lg">Aktif sorgu yok</p>
+                                            <p class="text-sm mt-2">Veritabanında çalışan sorgular burada görünecek</p>
+                                        </td>
+                                    </tr>
+                                `;
+                            }
+                            
+                            queriesTable.innerHTML = tableContent;
+                        }, completedPids.length > 0 ? 1000 : 0); // Delay only if we have completed queries to show
+                    }
+                })
+                .catch(error => {
+                    console.error('Error refreshing queries:', error);
+                })
+                .finally(() => {
+                    // Remove loading state
+                    refreshBtn.classList.remove('animate-spin');
+                });
+        }
+        
+        function showKillModal(pid, server) {
+            clearInterval(autoRefreshInterval);
+            document.getElementById('killPid').textContent = pid;
+            document.getElementById('confirmKill').onclick = function() {
+                executeKill(pid, server);
+            };
+            document.getElementById('killModal').classList.remove('hidden');
+        }
+
+        function hideKillModal() {
+            document.getElementById('killModal').classList.add('hidden');
+            startAutoRefresh();
+        }
+
+        function executeKill(pid, server) {
+            hideKillModal();
+            
+            // Show loading indicator
+            const refreshBtn = document.getElementById('refreshBtn');
+            refreshBtn.classList.add('animate-spin');
+            
+            // Disable any kill buttons to prevent double-kills
+            const killButtons = document.querySelectorAll('button[onclick^="killQuery"]');
+            killButtons.forEach(btn => btn.disabled = true);
+            
+            fetch(`/api/v1/queries/${pid}?server=${encodeURIComponent(server)}`, {
+                method: 'DELETE',
+            }).then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || 'Failed to kill query');
+                    });
+                }
+                
+                // Give the server a brief moment to complete the kill operation
+                setTimeout(() => {
+                    // Remove the row immediately for better UX
+                    const row = document.querySelector(`tr[data-pid="${pid}"]`);
+                    if (row) {
+                        row.classList.add('bg-red-50', 'dark:bg-red-900', 'opacity-50');
+                        
+                        // Fade out animation
+                        setTimeout(() => {
+                            row.style.transition = 'opacity 0.5s ease-out';
+                            row.style.opacity = '0';
+                            
+                            // Then remove it
+                            setTimeout(() => {
+                                row.remove();
+                            }, 500);
+                        }, 100);
+                    }
+                    
+                    // Also refresh all queries to ensure accuracy
+                    refreshQueries();
+                }, 300);
+                
+            }).catch(error => {
+                alert(error.message);
+                refreshQueries();
+            }).finally(() => {
+                refreshBtn.classList.remove('animate-spin');
+                // Re-enable kill buttons
+                killButtons.forEach(btn => btn.disabled = false);
+            });
+        }
+
+        function killQuery(pid, server) {
+            showKillModal(pid, server);
+        }
+
+        function startAutoRefresh() {
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+            }
+            // More frequent refresh (every 2 seconds) to catch completed queries faster
+            autoRefreshInterval = setInterval(refreshQueries, 2000);
+        }
+
+        let autoRefreshInterval;
+        
+        // Initialize auto-refresh when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            startAutoRefresh();
+        });
+    </script>
+</body>
+</html>

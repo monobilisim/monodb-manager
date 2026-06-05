@@ -1,2 +1,4 @@
 PGClusterManager
+monodb-manager
 config*
+/dist/

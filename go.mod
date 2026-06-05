@@ -1,4 +1,4 @@
-module github.com/monobilisim/PGClusterManager
+module github.com/monobilisim/monodb-manager
 
 go 1.25.0
 
