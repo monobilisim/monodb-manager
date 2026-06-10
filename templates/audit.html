@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="tr" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Denetim Kaydı · MonoDB Manager</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    {{template "sidebar-head"}}
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>tailwind.config = { darkMode: 'class' };</script>
+</head>
+<body class="h-full bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased" style="font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;">
+
+    <div class="flex min-h-screen">
+
+        {{template "sidebar" "audit"}}
+
+        <div class="main-wrapper flex-1 lg:ml-64 min-w-0 flex flex-col">
+
+            <main class="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8 space-y-6">
+
+                <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+                    <div class="flex items-start gap-3 min-w-0">
+                        <button onclick="toggleSidebar()" class="lg:hidden mt-1 rounded-md p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0" aria-label="Menü">
+                            <svg class="w-5 h-5" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                        </button>
+                        <div class="min-w-0">
+                            <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
+                                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                Yönetim
+                            </div>
+                            <h1 class="mt-2 text-3xl sm:text-4xl font-bold tracking-tight text-gray-900 dark:text-white">Denetim Kaydı</h1>
+                            <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">Panel üzerinden yapılan işlemler: kim, ne, ne zaman ve nereden.</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 shrink-0">
+                        <span class="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 px-2.5 py-1 text-xs font-medium ring-1 ring-inset ring-gray-200 dark:ring-gray-700">
+                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                            {{.CurrentUser}}
+                        </span>
+                        <div class="flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-1 shadow-sm">
+                            <button onclick="toggleDarkMode()" title="Temayı değiştir" aria-label="Temayı değiştir" class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors">
+                                <svg class="w-5 h-5 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                                <svg class="w-5 h-5 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <form method="GET" action="/audit" class="flex flex-wrap items-end gap-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm">
+                    <div class="min-w-[160px]">
+                        <label for="actor" class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Aktör</label>
+                        <input id="actor" name="actor" type="text" value="{{.SelectedActor}}" placeholder="kullanıcı adı"
+                            class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 focus:outline-none">
+                    </div>
+                    <div class="min-w-[180px]">
+                        <label for="action" class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">İşlem</label>
+                        <select id="action" name="action"
+                            class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 px-3 py-2 text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 focus:outline-none">
+                            <option value="">Tümü</option>
+                            {{range .Actions}}
+                            <option value="{{.}}" {{if eq . $.SelectedAction}}selected{{end}}>{{.}}</option>
+                            {{end}}
+                        </select>
+                    </div>
+                    <button type="submit" class="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition">
+                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        Filtrele
+                    </button>
+                    <a href="/audit" class="inline-flex items-center gap-2 rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition">Temizle</a>
+                </form>
+
+                <div class="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm">
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-800 text-sm">
+                            <thead class="bg-gray-50 dark:bg-gray-950/50">
+                                <tr class="text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                                    <th class="px-4 py-3 whitespace-nowrap">Zaman</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">Aktör</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">İşlem</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">Hedef</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">Sunucu</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">IP</th>
+                                    <th class="px-4 py-3 whitespace-nowrap">Sonuç</th>
+                                    <th class="px-4 py-3">Detay</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100 dark:divide-gray-800/60">
+                                {{if .Entries}}
+                                {{range .Entries}}
+                                <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+                                    <td class="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-400" style="font-family: 'JetBrains Mono', monospace;">{{.Timestamp.Format "2006-01-02 15:04:05"}}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap font-medium text-gray-900 dark:text-white">{{.Actor}}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        <span class="inline-flex items-center rounded-md bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:text-indigo-300" style="font-family: 'JetBrains Mono', monospace;">{{.Action}}</span>
+                                    </td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{{if .Target}}{{.Target}}{{else}}<span class="text-gray-400">—</span>{{end}}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-gray-700 dark:text-gray-300">{{if .Server}}{{.Server}}{{else}}<span class="text-gray-400">—</span>{{end}}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap text-gray-500 dark:text-gray-400" style="font-family: 'JetBrains Mono', monospace;">{{if .IP}}{{.IP}}{{else}}<span class="text-gray-400">—</span>{{end}}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        {{if eq .Result "success"}}
+                                        <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-200/60 dark:ring-emerald-800/60">Başarılı</span>
+                                        {{else}}
+                                        <span class="inline-flex items-center gap-1 rounded-full bg-red-50 dark:bg-red-900/20 px-2 py-0.5 text-xs font-medium text-red-700 dark:text-red-300 ring-1 ring-inset ring-red-200/60 dark:ring-red-800/60">Başarısız</span>
+                                        {{end}}
+                                    </td>
+                                    <td class="px-4 py-3 text-gray-500 dark:text-gray-400 max-w-md truncate" title="{{.Detail}}">{{if .Detail}}{{.Detail}}{{else}}<span class="text-gray-400">—</span>{{end}}</td>
+                                </tr>
+                                {{end}}
+                                {{else}}
+                                <tr>
+                                    <td colspan="8" class="px-4 py-12 text-center text-sm text-gray-500 dark:text-gray-400">Henüz denetim kaydı yok.</td>
+                                </tr>
+                                {{end}}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <p class="text-xs text-gray-400 dark:text-gray-600">En fazla son 500 kayıt gösterilir. En yeniden en eskiye sıralıdır.</p>
+
+            </main>
+        </div>
+    </div>
+
+    <script>
+        window.toggleDarkMode = function() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            try { localStorage.setItem('darkMode', isDark ? 'true' : 'false'); } catch (e) {}
+        };
+    </script>
+</body>
+</html>

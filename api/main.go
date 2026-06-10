@@ -16,6 +16,7 @@ import (
 
 	"html/template"
 
+	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
 	"gopkg.in/yaml.v3"
@@ -72,6 +73,10 @@ type Config struct {
 
 	// Users to ignore in active queries view
 	IgnoreUsers []string `yaml:"ignore_users"`
+
+	// Panel authentication & audit log
+	AuthDB        string `yaml:"auth_db"`        // SQLite path (default: ./monodb-manager.db)
+	SessionSecret string `yaml:"session_secret"` // cookie signing/encryption key (>=32 bytes)
 }
 
 // PatroniMember represents a member in the Patroni cluster
@@ -501,6 +506,25 @@ func getTemplatesDir(configuredPath string) string {
 	return ""
 }
 
+// healthURLAllowed reports whether target is one of the URLs configured in the
+// status-page ports/services. This bounds the /healthz proxy so it can only
+// fetch operator-configured health endpoints, not arbitrary URLs (SSRF guard).
+func healthURLAllowed(target string, ports []HAProxyPort, services []Service) bool {
+	for _, p := range ports {
+		if p.Status == target {
+			return true
+		}
+	}
+	for _, s := range services {
+		for _, n := range s.Nodes {
+			if n.URL == target {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // buildUserFilterClause creates a SQL WHERE clause to filter out ignored users
 func buildUserFilterClause() string {
 	if globalConfig == nil || len(globalConfig.IgnoreUsers) == 0 {
@@ -923,7 +947,26 @@ func InitServer() {
 		}
 	}
 
+	// Initialize the SQLite-backed auth + audit store.
+	authDBPath := config.AuthDB
+	if authDBPath == "" {
+		authDBPath = "monodb-manager.db"
+	}
+	store, err := OpenStore(authDBPath)
+	if err != nil {
+		log.Fatalf("Failed to open auth/audit store: %v", err)
+	}
+	defer store.Close()
+	log.Printf("Auth/audit store ready at %s", authDBPath)
+
+	// Ensure an initial admin account exists (prints credentials once on first run).
+	bootstrapAdmin(store)
+	auth := &authService{store: store}
+
 	router := gin.Default()
+
+	// Session middleware must run before any auth-gated route.
+	router.Use(sessions.Sessions(sessionName, newSessionStore(config.SessionSecret)))
 
 	// Set the function map first
 	router.SetFuncMap(template.FuncMap{
@@ -993,6 +1036,15 @@ func InitServer() {
 		config.PMMQanURL = queryIframeURL
 		config.PMMStatusURL = pmmURL
 	}
+
+	// Public auth routes (no session required).
+	router.GET("/login", auth.loginPage)
+	router.POST("/login", auth.login)
+	router.GET("/logout", auth.logout)
+	router.POST("/logout", auth.logout)
+
+	// Everything registered after this point requires a valid session.
+	router.Use(auth.AuthRequired())
 
 	// Add this route after the existing routes
 	router.GET("/", func(c *gin.Context) {
@@ -1084,6 +1136,53 @@ func InitServer() {
 		})
 
 		// Add dedicated status endpoint for lightweight status data refresh
+		// Same-origin health-check proxy. The status page resolves each badge by
+		// fetching its target URL; doing that directly from the browser fails on
+		// cross-origin targets (Patroni/HAProxy send no CORS headers). This proxy
+		// performs the fetch server-side and returns the upstream status + a short
+		// body snippet the client can keyword-match (up/running/healthy/...).
+		// Only URLs that appear in the configured ports/services are allowed.
+		v1.GET("/healthz", func(c *gin.Context) {
+			target := c.Query("url")
+			if target == "" {
+				c.JSON(400, gin.H{"error": "url parametresi gerekli"})
+				return
+			}
+			if !healthURLAllowed(target, haPorts, services) {
+				c.JSON(403, gin.H{"error": "url izin listesinde değil"})
+				return
+			}
+			client := &http.Client{Timeout: 4 * time.Second}
+			resp, err := client.Get(target)
+			if err != nil {
+				c.JSON(200, gin.H{"state": "down", "raw": err.Error()})
+				return
+			}
+			defer resp.Body.Close()
+			body := make([]byte, 4096)
+			n, _ := resp.Body.Read(body)
+			snippet := strings.ToLower(string(body[:n]))
+			// HTTP status is the primary signal: a reachable endpoint that answers
+			// 2xx/3xx is up. Body keywords only decide the ambiguous cases (some
+			// badge services return 200 with a "down"/"offline" payload). We do NOT
+			// keyword-scan healthy 2xx dashboards (e.g. HAProxy stats lists per-
+			// backend "DOWN" rows that must not flip the whole service to down).
+			state := "unknown"
+			switch {
+			case resp.StatusCode >= 500:
+				state = "down"
+			case resp.StatusCode >= 200 && resp.StatusCode < 400:
+				state = "up"
+			case strings.Contains(snippet, "down"), strings.Contains(snippet, "offline"),
+				strings.Contains(snippet, "unhealthy"), strings.Contains(snippet, "failed"):
+				state = "down"
+			case strings.Contains(snippet, "up"), strings.Contains(snippet, "healthy"),
+				strings.Contains(snippet, "running"), strings.Contains(snippet, "ok"):
+				state = "up"
+			}
+			c.JSON(200, gin.H{"state": state, "code": resp.StatusCode})
+		})
+
 		v1.GET("/status", func(c *gin.Context) {
 			// Add cache headers to prevent unnecessary requests
 			c.Header("Cache-Control", "no-cache, must-revalidate")
@@ -1264,6 +1363,16 @@ func InitServer() {
 				}
 			}
 
+			var createdServers []string
+			for sn := range serverDatabases {
+				createdServers = append(createdServers, sn)
+			}
+			_ = store.WriteAudit(AuditEntry{
+				Actor: currentActor(c), Action: ActionPGUserCreate,
+				Target: req.Username, Server: strings.Join(createdServers, ","),
+				IP: c.ClientIP(), Result: ResultSuccess,
+				Detail: fmt.Sprintf("databases: %s", strings.Join(req.Databases, ", ")),
+			})
 			c.JSON(200, gin.H{"message": "User created successfully on all selected servers"})
 		})
 
@@ -1363,6 +1472,11 @@ func InitServer() {
 				return
 			}
 
+			_ = store.WriteAudit(AuditEntry{
+				Actor: currentActor(c), Action: ActionPGUserDelete,
+				Target: username, Server: serverName,
+				IP: c.ClientIP(), Result: ResultSuccess,
+			})
 			c.JSON(200, gin.H{"message": fmt.Sprintf("User deleted successfully from server %s", serverName)})
 		})
 
@@ -1482,6 +1596,11 @@ func InitServer() {
 					if ok {
 						killSuccessful = true
 						log.Printf("Successfully killed query %s on server %s backend PID %d", pid, serverName, backend.PID)
+						_ = store.WriteAudit(AuditEntry{
+							Actor: currentActor(c), Action: ActionQueryKill,
+							Target: pid, Server: serverName,
+							IP: c.ClientIP(), Result: ResultSuccess,
+						})
 						c.JSON(200, gin.H{"message": fmt.Sprintf("Query killed successfully on server %s", serverName)})
 						return
 					} else {
@@ -1608,6 +1727,71 @@ func InitServer() {
 
 			c.JSON(200, resp)
 		})
+
+		// Audit log (read-only JSON).
+		v1.GET("/audit", func(c *gin.Context) {
+			entries, err := store.ListAudit(AuditFilter{
+				Actor:  c.Query("actor"),
+				Action: c.Query("action"),
+			})
+			if err != nil {
+				c.JSON(500, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(200, gin.H{"entries": entries})
+		})
+
+		// Panel (app) user management.
+		v1.GET("/app-users", func(c *gin.Context) {
+			users, err := store.ListAppUsers()
+			if err != nil {
+				c.JSON(500, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(200, gin.H{"users": users})
+		})
+
+		v1.POST("/app-users", func(c *gin.Context) {
+			var req struct {
+				Username string `json:"username"`
+				Password string `json:"password"`
+			}
+			if err := c.BindJSON(&req); err != nil {
+				c.JSON(400, gin.H{"error": "Geçersiz veri"})
+				return
+			}
+			if err := store.CreateAppUser(req.Username, req.Password); err != nil {
+				_ = store.WriteAudit(AuditEntry{
+					Actor: currentActor(c), Action: ActionAppUserAdd,
+					Target: req.Username, IP: c.ClientIP(),
+					Result: ResultFailure, Detail: err.Error(),
+				})
+				c.JSON(400, gin.H{"error": err.Error()})
+				return
+			}
+			_ = store.WriteAudit(AuditEntry{
+				Actor: currentActor(c), Action: ActionAppUserAdd,
+				Target: req.Username, IP: c.ClientIP(), Result: ResultSuccess,
+			})
+			c.JSON(200, gin.H{"message": "Panel kullanıcısı oluşturuldu"})
+		})
+
+		v1.DELETE("/app-users/:username", func(c *gin.Context) {
+			username := c.Param("username")
+			if username == currentActor(c) {
+				c.JSON(400, gin.H{"error": "Kendi hesabınızı silemezsiniz"})
+				return
+			}
+			if err := store.DeleteAppUser(username); err != nil {
+				c.JSON(400, gin.H{"error": err.Error()})
+				return
+			}
+			_ = store.WriteAudit(AuditEntry{
+				Actor: currentActor(c), Action: ActionAppUserDel,
+				Target: username, IP: c.ClientIP(), Result: ResultSuccess,
+			})
+			c.JSON(200, gin.H{"message": "Panel kullanıcısı silindi"})
+		})
 	}
 
 	// Add the query route handler for the query page - aggregate from all servers
@@ -1699,6 +1883,39 @@ func InitServer() {
 		c.HTML(200, "topology.html", gin.H{
 			"Servers": servers,
 			"HAPorts": haPorts,
+		})
+	})
+
+	// Audit log page (read-only).
+	router.GET("/audit", func(c *gin.Context) {
+		entries, err := store.ListAudit(AuditFilter{
+			Actor:  c.Query("actor"),
+			Action: c.Query("action"),
+		})
+		if err != nil {
+			log.Printf("Error loading audit log: %v", err)
+		}
+		actions, _ := store.DistinctAuditActions()
+		c.HTML(200, "audit.html", gin.H{
+			"Servers":        servers,
+			"Entries":        entries,
+			"Actions":        actions,
+			"SelectedActor":  c.Query("actor"),
+			"SelectedAction": c.Query("action"),
+			"CurrentUser":    currentActor(c),
+		})
+	})
+
+	// Panel user management page.
+	router.GET("/app-users", func(c *gin.Context) {
+		users, err := store.ListAppUsers()
+		if err != nil {
+			log.Printf("Error loading app users: %v", err)
+		}
+		c.HTML(200, "app_users.html", gin.H{
+			"Servers":     servers,
+			"AppUsers":    users,
+			"CurrentUser": currentActor(c),
 		})
 	})
 

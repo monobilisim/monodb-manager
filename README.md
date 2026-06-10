@@ -59,6 +59,14 @@ metrics — all from a single, dependency-free Go binary.
   - Service node availability checks.
   - Embedded Percona PMM status and Query Analytics (QAN) iframes.
 
+- **Authentication & audit log**
+  - Username/password login backed by a local SQLite database (bcrypt-hashed).
+  - All UI and API routes require an authenticated session (cookie-based).
+  - On first run an `admin` account is auto-created with a random password printed once to the log.
+  - Manage panel accounts from the UI; every sensitive action is recorded.
+  - Immutable audit trail: logins, PostgreSQL user create/delete, query kills, panel user changes — with actor, target, server, IP, result and timestamp.
+  - CGO-free SQLite (`modernc.org/sqlite`) keeps the single-static-binary promise.
+
 - **Single static binary**
   - Written in Go, ships with embedded HTML templates, no external runtime needed.
 
@@ -73,6 +81,9 @@ metrics — all from a single, dependency-free Go binary.
 | `/users`            | User and database grant management                       |
 | `/query`            | Active PostgreSQL queries                                |
 | `/query-analytics`  | Embedded PMM Query Analytics                             |
+| `/app-users`        | Panel (login) account management                         |
+| `/audit`            | Read-only audit log with actor/action filters            |
+| `/login`            | Login page (public)                                      |
 
 ---
 
@@ -158,9 +169,19 @@ badge_refresh_interval: 3000
 
 # Optional log file path
 log_file: "/var/log/monodb-manager.log"
+
+# Authentication & audit log (SQLite-backed)
+# Path to the SQLite database for panel accounts and the audit trail.
+# Created automatically on first run. Default: ./monodb-manager.db
+auth_db: "/var/lib/monodb-manager/auth.db"
+
+# Secret used to sign/encrypt the session cookie. Use >= 32 random bytes.
+# If omitted, an ephemeral secret is generated and sessions reset on restart.
+session_secret: "change-me-to-a-32+-byte-random-string"
 ```
 
 > The config file path is mandatory; single-server mode is not supported.
+
 
 ---
 
@@ -182,11 +203,32 @@ Flags:
 
 Then open `http://localhost:8080` in your browser.
 
+### First login
+
+On the very first start (empty `auth_db`), an initial admin account is created
+and its credentials are printed **once** to the log:
+
+```
+========================================================
+ monodb-manager: created initial panel admin account
+   username: admin
+   password: <random-generated-password>
+ Store this password now - it is shown only once.
+========================================================
+```
+
+Log in at `/login`, then create additional panel accounts from
+**Panel Kullanıcıları** (`/app-users`) and review activity under
+**Denetim Kaydı** (`/audit`). All UI and API routes require a valid session.
+
 ---
 
 ## API
 
 All JSON endpoints are grouped under `/api/v1`:
+
+All endpoints require an authenticated session (see [First login](#first-login));
+unauthenticated API requests return `401`.
 
 | Method | Endpoint              | Description                                  |
 | ------ | --------------------- | -------------------------------------------- |
@@ -196,6 +238,12 @@ All JSON endpoints are grouped under `/api/v1`:
 | `GET`  | `/api/v1/users`       | Aggregated users and databases               |
 | `POST` | `/api/v1/users`       | Create a user and grant database access      |
 | `GET`  | `/api/v1/queries`     | Active queries across clusters               |
+| `DELETE` | `/api/v1/queries/:pid` | Kill an active query (audited)              |
+| `DELETE` | `/api/v1/users/:username` | Delete a PostgreSQL user (audited)       |
+| `GET`  | `/api/v1/audit`       | Audit log entries (filter: actor, action)    |
+| `GET`  | `/api/v1/app-users`   | List panel (login) accounts                  |
+| `POST` | `/api/v1/app-users`   | Create a panel account (audited)             |
+| `DELETE` | `/api/v1/app-users/:username` | Delete a panel account (audited)     |
 
 ---
 

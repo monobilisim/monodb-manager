@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="tr" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Giriş · MonoDB Manager</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        (function() {
+            try {
+                document.documentElement.classList.toggle('dark', localStorage.getItem('darkMode') === 'true');
+            } catch (e) {}
+        })();
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>tailwind.config = { darkMode: 'class' };</script>
+</head>
+<body class="h-full bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased" style="font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;">
+
+    <div class="min-h-full flex items-center justify-center px-4 py-12">
+        <div class="w-full max-w-sm">
+
+            <div class="flex flex-col items-center mb-8">
+                <span class="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-700 text-white shadow-lg ring-1 ring-indigo-600/20">
+                    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.657 4.03 3 9 3s9-1.343 9-3V5"/><path d="M3 12c0 1.657 4.03 3 9 3s9-1.343 9-3"/></svg>
+                </span>
+                <h1 class="mt-4 text-2xl font-bold tracking-tight text-gray-900 dark:text-white">MonoDB<span class="text-indigo-600 dark:text-indigo-400">Manager</span></h1>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">PostgreSQL Yönetim Paneli</p>
+            </div>
+
+            <div class="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 shadow-sm">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-1">Giriş yap</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-5">Devam etmek için hesabınızla oturum açın.</p>
+
+                {{if .Error}}
+                <div class="mb-4 flex items-start gap-2 rounded-lg bg-red-50 dark:bg-red-900/20 px-3 py-2.5 text-sm text-red-700 dark:text-red-300 ring-1 ring-inset ring-red-200/60 dark:ring-red-800/60">
+                    <svg class="h-4 w-4 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <span>{{.Error}}</span>
+                </div>
+                {{end}}
+
+                <form method="POST" action="/login" class="space-y-4">
+                    <div>
+                        <label for="username" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Kullanıcı adı</label>
+                        <input id="username" name="username" type="text" autocomplete="username" required autofocus
+                            class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 focus:outline-none transition"
+                            placeholder="admin">
+                    </div>
+                    <div>
+                        <label for="password" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Parola</label>
+                        <input id="password" name="password" type="password" autocomplete="current-password" required
+                            class="block w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 focus:outline-none transition"
+                            placeholder="••••••••">
+                    </div>
+                    <button type="submit"
+                        class="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:from-indigo-600 hover:to-indigo-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition">
+                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                        Giriş yap
+                    </button>
+                </form>
+            </div>
+
+            <p class="mt-6 text-center text-xs text-gray-400 dark:text-gray-600">monodb-manager · güvenli erişim</p>
+        </div>
+    </div>
+</body>
+</html>

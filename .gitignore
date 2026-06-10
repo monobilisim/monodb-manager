@@ -2,3 +2,11 @@ PGClusterManager
 monodb-manager
 config*
 /dist/
+
+# SQLite auth/audit store (and WAL/SHM sidecar files)
+*.db
+*.db-wal
+*.db-shm
+
+# Local tooling / agent artifacts
+.opencode/

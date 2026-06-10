@@ -241,21 +241,15 @@
 
         async function resolveStatus(url) {
             try {
-                const u = new URL(url, window.location.origin);
+                // Resolve via the same-origin server-side proxy so cross-origin
+                // targets (Patroni/HAProxy without CORS headers) still work.
+                const u = new URL('/api/v1/healthz', window.location.origin);
+                u.searchParams.set('url', url);
                 u.searchParams.set('t', Date.now());
-                const res = await fetch(u.toString(), { cache: 'no-store', credentials: 'omit' });
+                const res = await fetch(u.toString(), { cache: 'no-store' });
                 if (!res.ok) return { state: 'unknown', raw: `HTTP ${res.status}` };
-                const text = await res.text();
-                const plain = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
-                // Order matters: check "down" markers first so tokens like
-                // "setup"/"backup" cannot accidentally match the "up" branch.
-                if (/\b(down|offline|unhealthy|error|failed|fail)\b/.test(plain)) {
-                    return { state: 'down', raw: plain };
-                }
-                if (/\b(up|online|healthy|ok|success|running)\b/.test(plain)) {
-                    return { state: 'up', raw: plain };
-                }
-                return { state: 'unknown', raw: plain };
+                const data = await res.json();
+                return { state: data.state || 'unknown', raw: data.raw || '' };
             } catch (e) {
                 return { state: 'unknown', raw: String(e) };
             }

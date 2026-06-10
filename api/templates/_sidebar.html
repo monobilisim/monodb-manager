@@ -143,7 +143,7 @@
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.657 4.03 3 9 3s9-1.343 9-3V5"/><path d="M3 12c0 1.657 4.03 3 9 3s9-1.343 9-3"/></svg>
         </span>
         <div class="sidebar-brand-text min-w-0">
-            <div class="text-sm font-bold tracking-tight text-gray-900 dark:text-white leading-tight">PGCluster<span class="text-indigo-600 dark:text-indigo-400">Manager</span></div>
+            <div class="text-sm font-bold tracking-tight text-gray-900 dark:text-white leading-tight">MonoDB<span class="text-indigo-600 dark:text-indigo-400">Manager</span></div>
             <div class="text-[11px] text-gray-500 dark:text-gray-500 leading-tight">PostgreSQL Yönetim Paneli</div>
         </div>
     </a>
@@ -184,6 +184,18 @@
             <span class="sidebar-label">Kullanıcılar</span>
             {{if eq . "users"}}<span class="sidebar-active-dot ml-auto h-1.5 w-1.5 rounded-full bg-white"></span>{{end}}
         </a>
+
+        <a href="/app-users" title="Panel Kullanıcıları" class="sidebar-link group {{if eq . "app-users"}}is-active{{end}}">
+            <svg class="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+            <span class="sidebar-label">Panel Kullanıcıları</span>
+            {{if eq . "app-users"}}<span class="sidebar-active-dot ml-auto h-1.5 w-1.5 rounded-full bg-white"></span>{{end}}
+        </a>
+
+        <a href="/audit" title="Denetim Kaydı" class="sidebar-link group {{if eq . "audit"}}is-active{{end}}">
+            <svg class="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="9" y1="11" x2="15" y2="11"/></svg>
+            <span class="sidebar-label">Denetim Kaydı</span>
+            {{if eq . "audit"}}<span class="sidebar-active-dot ml-auto h-1.5 w-1.5 rounded-full bg-white"></span>{{end}}
+        </a>
     </nav>
 
     <div class="sidebar-footer p-3 border-t border-gray-200 dark:border-gray-800 shrink-0">
@@ -197,6 +209,13 @@
                 <div class="text-gray-500 dark:text-gray-400 truncate">Her 30 saniyede yenilenir</div>
             </div>
         </div>
+    </div>
+
+    <div class="sidebar-footer px-3 pb-3 shrink-0">
+        <a href="/logout" title="Çıkış yap" class="sidebar-link group text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-700 dark:hover:text-red-300">
+            <svg class="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            <span class="sidebar-label">Çıkış yap</span>
+        </a>
     </div>
 
     <button
