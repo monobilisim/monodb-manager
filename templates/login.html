@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="tr" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Giriş · MonoDB Manager</title>
+    <link rel="preload" href="/static/fonts/manrope-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/static/app.css">
+    <script>
+        (function () {
+            try {
+                if (localStorage.getItem('darkMode') === 'true') {
+                    document.documentElement.classList.add('dark');
+                }
+            } catch (e) {}
+        })();
+    </script>
+</head>
+<body class="h-full bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased">
+<main class="min-h-screen flex items-center justify-center px-4 py-10">
+    <div class="w-full max-w-sm">
+        <div class="flex items-center gap-3 mb-6">
+            <span class="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-600/20">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.657 4.03 3 9 3s9-1.343 9-3V5"/><path d="M3 12c0 1.657 4.03 3 9 3s9-1.343 9-3"/></svg>
+            </span>
+            <div>
+                <div class="text-base font-bold tracking-tight leading-tight">MonoDB <span class="text-indigo-600 dark:text-indigo-400">Manager</span></div>
+                <div class="text-[11px] text-gray-500 dark:text-gray-400 leading-tight">PostgreSQL Yönetim Paneli</div>
+            </div>
+        </div>
+
+        <form method="post" action="/login" class="bg-white dark:bg-gray-900 rounded-xl ring-1 ring-gray-200 dark:ring-gray-800 shadow-sm p-6 space-y-5">
+            <div>
+                <h1 class="text-xl font-semibold tracking-tight text-gray-900 dark:text-white">Giriş yap</h1>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Devam etmek için panel hesabınızı kullanın.</p>
+            </div>
+
+            <input type="hidden" name="next" value="{{.Next}}">
+
+            {{if .ServiceUnready}}
+            <div class="rounded-md bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-200 px-3 py-2 text-xs ring-1 ring-inset ring-amber-200 dark:ring-amber-800">
+                Panel kullanıcı deposuna ulaşılamıyor. Yönetici ile iletişime geçin.
+            </div>
+            {{end}}
+
+            {{if .Error}}
+            <div role="alert" class="rounded-md bg-red-50 dark:bg-red-950/50 text-red-800 dark:text-red-200 px-3 py-2 text-xs ring-1 ring-inset ring-red-200 dark:ring-red-800">
+                {{.Error}}
+            </div>
+            {{end}}
+
+            <div>
+                <label for="username" class="block text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-1.5">Kullanıcı adı</label>
+                <input type="text" name="username" id="username" required autofocus autocomplete="username"
+                       class="block w-full rounded-md border-0 ring-1 ring-inset ring-gray-300 dark:ring-gray-700 bg-white dark:bg-gray-800 dark:text-white focus:ring-2 focus:ring-inset focus:ring-indigo-500 px-3.5 py-2.5 text-sm placeholder:text-gray-500 dark:placeholder:text-gray-400"
+                       placeholder="admin">
+            </div>
+
+            <div>
+                <label for="password" class="block text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-1.5">Parola</label>
+                <input type="password" name="password" id="password" required autocomplete="current-password"
+                       class="block w-full rounded-md border-0 ring-1 ring-inset ring-gray-300 dark:ring-gray-700 bg-white dark:bg-gray-800 dark:text-white focus:ring-2 focus:ring-inset focus:ring-indigo-500 px-3.5 py-2.5 text-sm placeholder:text-gray-500 dark:placeholder:text-gray-400"
+                       placeholder="••••••••••••">
+            </div>
+
+            <button type="submit" class="w-full inline-flex justify-center items-center gap-2 rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 transition-colors">
+                Giriş
+            </button>
+        </form>
+
+        <p class="mt-6 text-center text-xs text-gray-500 dark:text-gray-400">
+            Yetkisiz erişim girişimleri kaydedilir.
+        </p>
+    </div>
+</main>
+</body>
+</html>

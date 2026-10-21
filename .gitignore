@@ -2,3 +2,4 @@ PGClusterManager
 monodb-manager
 config*
 /dist/
+node_modules/

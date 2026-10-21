@@ -4,21 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PostgreSQL Durumu</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="preload" href="/static/fonts/manrope-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/static/app.css">
     {{template "sidebar-head"}}
-    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="h-full bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased" style="font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;">
+<body class="h-full bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased">
 
     <div class="flex min-h-screen">
 
-        {{template "sidebar" "status"}}
+        {{template "sidebar" (dict "Page" "status" "Auth" .Auth)}}
 
         <div class="main-wrapper flex-1 lg:ml-64 min-w-0 flex flex-col">
 
-            <main class="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8 space-y-8">
+            <main id="main" class="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8 space-y-8">
 
                 <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
                     <div class="flex items-start gap-3 min-w-0">
@@ -26,11 +25,7 @@
                             <svg class="w-5 h-5" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
                         </button>
                         <div class="min-w-0">
-                            <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
-                                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><path d="M21 12c0 4.97-4.03 9-9 9s-9-4.03-9-9 4.03-9 9-9 9 4.03 9 9z"/></svg>
-                                Canlı Cluster Genel Bakışı
-                            </div>
-                            <h1 class="mt-2 text-3xl sm:text-4xl font-bold tracking-tight text-gray-900 dark:text-white">PostgreSQL Durumu</h1>
+                            <h1 class="text-3xl sm:text-4xl font-bold tracking-tight text-gray-900 dark:text-white">PostgreSQL Durumu</h1>
                             <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">Cluster node'larınızdaki anlık sağlık, bağlantı portları ve servis durumu.</p>
                         </div>
                     </div>
@@ -60,6 +55,38 @@
                     </div>
                 </div>
 
+                <section class="bg-white dark:bg-gray-900 rounded-xl ring-1 ring-gray-200 dark:ring-gray-800 overflow-hidden">
+                    <header class="px-6 py-4 border-b border-gray-200 dark:border-gray-800 flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <h2 class="text-base font-semibold text-gray-900 dark:text-white">Cluster Bağlantıları</h2>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Patroni REST API üzerinden keşfedilen kümeler</p>
+                        </div>
+                        <span class="inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-800 px-2.5 py-0.5 text-xs font-semibold text-gray-600 dark:text-gray-300">{{len .ServerStatuses}} küme</span>
+                    </header>
+                    <ul role="list" class="divide-y divide-gray-100 dark:divide-gray-800">
+                        {{range .ServerStatuses}}
+                        <li class="px-6 py-4 flex flex-wrap items-center gap-x-8 gap-y-2">
+                            <div class="flex items-center gap-2.5 min-w-0">
+                                {{if .error}}
+                                <span class="h-2 w-2 shrink-0 rounded-full bg-red-500" aria-hidden="true"></span>
+                                {{else}}
+                                <span class="h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-hidden="true"></span>
+                                {{end}}
+                                <span class="font-mono text-sm font-semibold text-gray-900 dark:text-white truncate">{{.name}}</span>
+                                <span class="sr-only">{{if .error}}bağlantı hatası{{else}}bağlı{{end}}</span>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                                <span><span class="font-semibold tabular-nums text-gray-900 dark:text-gray-200">{{.users}}</span> kullanıcı</span>
+                                <span><span class="font-semibold tabular-nums text-gray-900 dark:text-gray-200">{{.databases}}</span> veritabanı</span>
+                            </div>
+                            {{if .error}}
+                            <p class="w-full font-mono text-xs text-red-600 dark:text-red-400 break-all">{{.error}}</p>
+                            {{end}}
+                        </li>
+                        {{end}}
+                    </ul>
+                </section>
+
                 <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
 
                     <section id="haproxyPortsContainer" class="bg-white dark:bg-gray-900 rounded-xl shadow-sm ring-1 ring-gray-200 dark:ring-gray-800 overflow-hidden">
@@ -82,20 +109,25 @@
                                 <tbody id="haproxyPortsTable" class="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
                                     {{range .HAPorts}}
                                     <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-white" style="font-family: 'JetBrains Mono', ui-monospace, monospace;">{{.Port}}</td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900 dark:text-white font-mono">{{.Port}}</td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">{{.Type}}</td>
                                         <td class="px-6 py-4 whitespace-nowrap text-right">
                                             <span class="status-pill"
                                                   data-badge-url="{{.Status}}"
                                                   data-dashboard-url="{{.Status | replaceBadgeWithDashboard}}">
                                                 <span class="status-pill-inner">
-                                                    <span class="inline-flex items-center gap-2 rounded-lg bg-gray-200 dark:bg-gray-800 px-3 py-2 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 ring-1 ring-gray-300 dark:ring-gray-700">
-                                                        <span class="inline-flex h-2.5 w-2.5 rounded-full bg-gray-400 animate-pulse"></span>
-                                                        Kontrol ediliyor…
+                                                    <span class="inline-flex items-center gap-2 rounded-md bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-xs font-semibold text-gray-600 dark:text-gray-300 ring-1 ring-inset ring-gray-200 dark:ring-gray-700">
+                                                        <span class="h-2 w-2 rounded-full bg-gray-400"></span>
+                                                        Kontrol ediliyor
                                                     </span>
                                                 </span>
                                             </span>
                                         </td>
+                                    </tr>
+                                    {{end}}
+                                    {{if not .HAPorts}}
+                                    <tr>
+                                        <td colspan="3" class="px-6 py-10 text-center text-sm text-gray-500 dark:text-gray-400">Yapılandırılmış HAProxy portu yok.</td>
                                     </tr>
                                     {{end}}
                                 </tbody>
@@ -109,16 +141,25 @@
                                 <h2 class="text-base font-semibold text-gray-900 dark:text-white">Servis Durumu</h2>
                                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Cluster genelinde node başına servis sağlığı</p>
                             </div>
-                            <span class="inline-flex items-center rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ring-emerald-200 dark:ring-emerald-800">3 Node</span>
+                            {{if .NodeCount}}<span class="inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-800 px-2.5 py-0.5 text-xs font-semibold text-gray-600 dark:text-gray-300">{{.NodeCount}} node</span>{{end}}
                         </header>
                         <div class="overflow-x-auto">
                             <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
                                 <thead class="bg-gray-50 dark:bg-gray-900/50">
                                     <tr>
                                         <th scope="col" class="px-6 py-3 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Servis</th>
-                                        <th scope="col" class="px-4 py-3 text-center text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Node 1</th>
-                                        <th scope="col" class="px-4 py-3 text-center text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Node 2</th>
-                                        <th scope="col" class="px-4 py-3 text-center text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Node 3</th>
+                                        {{if .NodeHeaders}}
+                                        {{range .NodeHeaders}}
+                                        <th scope="col" class="px-4 py-3 text-center text-[11px] font-semibold text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                                            <div class="text-gray-700 dark:text-gray-200">{{.Name}}</div>
+                                            {{if .Detail}}<div class="mt-0.5 text-[10px] font-mono font-normal normal-case text-gray-400 dark:text-gray-500">{{.Detail}}</div>{{end}}
+                                        </th>
+                                        {{end}}
+                                        {{else}}
+                                        {{range until .NodeCount}}
+                                        <th scope="col" class="px-4 py-3 text-center text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Node {{.}}</th>
+                                        {{end}}
+                                        {{end}}
                                     </tr>
                                 </thead>
                                 <tbody id="servicesTable" class="bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
@@ -131,14 +172,19 @@
                                                   data-badge-url="{{.URL}}"
                                                   data-dashboard-url="{{.URL | replaceBadgeWithDashboard}}">
                                                 <span class="status-pill-inner">
-                                                    <span class="inline-flex items-center gap-2 rounded-lg bg-gray-200 dark:bg-gray-800 px-3 py-2 text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 ring-1 ring-gray-300 dark:ring-gray-700">
-                                                        <span class="inline-flex h-2.5 w-2.5 rounded-full bg-gray-400 animate-pulse"></span>
-                                                        …
+                                                    <span class="inline-flex items-center gap-2 rounded-md bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-xs font-semibold text-gray-600 dark:text-gray-300 ring-1 ring-inset ring-gray-200 dark:ring-gray-700">
+                                                        <span class="h-2 w-2 rounded-full bg-gray-400"></span>
+                                                        Kontrol ediliyor
                                                     </span>
                                                 </span>
                                             </span>
                                         </td>
                                         {{end}}
+                                    </tr>
+                                    {{end}}
+                                    {{if not .Services}}
+                                    <tr>
+                                        <td colspan="1" class="px-6 py-10 text-center text-sm text-gray-500 dark:text-gray-400">Yapılandırılmış servis yok.</td>
                                     </tr>
                                     {{end}}
                                 </tbody>
@@ -155,7 +201,7 @@
                         <div>
                             <h2 class="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                                 Cluster Detaylı İzleme
-                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold tracking-wider uppercase bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">Grafana</span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold tracking-wider uppercase bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">Grafana</span>
                             </h2>
                             <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Canlı PMM gösterge paneli · yeniden boyutlandırılabilir</p>
                         </div>
@@ -201,13 +247,7 @@
     </div>
 
     <script>
-        // Tailwind config
-        tailwind.config = {
-            darkMode: 'class'
-        }
-
-        // Check for dark mode preference on load
-        document.documentElement.classList.toggle('dark', localStorage.getItem('darkMode') === 'true');
+        // Dark mode state is applied in <head> before first paint.
 
         // Sync embedded Grafana iframes to the current light/dark theme by
         // injecting ?theme=light|dark into the iframe URL. Initial src is set
@@ -261,16 +301,19 @@
             }
         }
 
+        function escHtml(value) {
+            return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[c]));
+        }
+
         function renderPillHTML(state, dashboardUrl) {
-            const href = dashboardUrl || '#';
+            const href = escHtml(dashboardUrl || '#');
             if (state === 'up') {
                 return `
                     <a href="${href}" target="_blank" rel="noopener"
-                       class="group inline-flex items-center gap-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 dark:from-emerald-500 dark:to-emerald-700 px-3.5 py-2 text-xs font-extrabold uppercase tracking-wider text-white shadow-md shadow-emerald-500/30 dark:shadow-emerald-900/40 ring-1 ring-emerald-600/50 hover:from-emerald-400 hover:to-emerald-500 transition-all">
-                        <span class="relative flex h-2.5 w-2.5">
-                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
-                        </span>
+                       class="inline-flex items-center gap-2 rounded-md bg-emerald-50 dark:bg-emerald-950/60 px-3 py-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-200 ring-1 ring-inset ring-emerald-200 dark:ring-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-colors">
+                        <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
                         Çalışıyor
                     </a>
                 `;
@@ -278,19 +321,16 @@
             if (state === 'down') {
                 return `
                     <a href="${href}" target="_blank" rel="noopener"
-                       class="inline-flex items-center gap-2 rounded-lg bg-gradient-to-br from-red-500 to-red-600 dark:from-red-500 dark:to-red-700 px-3.5 py-2 text-xs font-extrabold uppercase tracking-wider text-white shadow-md shadow-red-500/30 dark:shadow-red-900/40 ring-1 ring-red-600/50 hover:from-red-400 hover:to-red-500 transition-all">
-                        <span class="relative flex h-2.5 w-2.5">
-                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-white"></span>
-                        </span>
+                       class="inline-flex items-center gap-2 rounded-md bg-red-50 dark:bg-red-950/60 px-3 py-1.5 text-xs font-semibold text-red-800 dark:text-red-200 ring-1 ring-inset ring-red-200 dark:ring-red-800 hover:bg-red-100 dark:hover:bg-red-900/60 transition-colors">
+                        <span class="h-2 w-2 rounded-full bg-red-500"></span>
                         Çalışmıyor
                     </a>
                 `;
             }
             return `
                 <a href="${href}" target="_blank" rel="noopener"
-                   class="inline-flex items-center gap-2 rounded-lg bg-gray-200 dark:bg-gray-800 px-3.5 py-2 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300 ring-1 ring-gray-300 dark:ring-gray-700 hover:bg-gray-300 dark:hover:bg-gray-700 transition-all">
-                    <span class="inline-flex h-2.5 w-2.5 rounded-full bg-gray-400 animate-pulse"></span>
+                   class="inline-flex items-center gap-2 rounded-md bg-gray-100 dark:bg-gray-800 px-3 py-1.5 text-xs font-semibold text-gray-600 dark:text-gray-300 ring-1 ring-inset ring-gray-200 dark:ring-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                    <span class="h-2 w-2 rounded-full bg-gray-400"></span>
                     Bilinmiyor
                 </a>
             `;

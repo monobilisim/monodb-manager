@@ -4,21 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PostgreSQL Sorgu Analizi</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="preload" href="/static/fonts/manrope-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/static/app.css">
     {{template "sidebar-head"}}
-    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="h-full bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased" style="font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;">
+<body class="h-full bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 antialiased">
 
     <div class="flex min-h-screen">
 
-        {{template "sidebar" "query-analytics"}}
+        {{template "sidebar" (dict "Page" "query-analytics" "Auth" .Auth)}}
 
         <div class="main-wrapper flex-1 lg:ml-64 min-w-0 flex flex-col">
 
-            <main class="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8 space-y-8">
+            <main id="main" class="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8 space-y-8">
 
         <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
             <div class="flex items-start gap-3 min-w-0">
@@ -26,11 +25,7 @@
                     <svg class="w-5 h-5" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
                 </button>
                 <div class="min-w-0">
-                    <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
-                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                        Performans Analizi
-                    </div>
-                    <h1 class="mt-2 text-3xl sm:text-4xl font-bold tracking-tight text-gray-900 dark:text-white">Sorgu Analizi</h1>
+                    <h1 class="text-3xl sm:text-4xl font-bold tracking-tight text-gray-900 dark:text-white">Sorgu Analizi</h1>
                     <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">Geçmiş sorgu performansı, gecikme yüzdelikleri ve PMM'den en çok kaynak tüketen sorgular.</p>
                 </div>
             </div>
@@ -60,7 +55,7 @@
                 <div>
                     <h2 class="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                         Sorgu Performans İzleme
-                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold tracking-wider uppercase bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">Grafana</span>
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold tracking-wider uppercase bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">Grafana</span>
                     </h2>
                     <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Gömülü PMM QAN gösterge paneli &mdash; iframe içinde doğrudan etkileşime geçebilirsiniz</p>
                 </div>
@@ -105,15 +100,15 @@
             <div class="relative px-6 py-20 text-center overflow-hidden">
                 <div class="absolute inset-0 opacity-[0.04] dark:opacity-[0.06]" style="background-image: radial-gradient(circle at 1px 1px, currentColor 1px, transparent 0); background-size: 24px 24px;"></div>
                 <div class="relative">
-                    <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/40 dark:to-orange-950/40 ring-1 ring-orange-200/60 dark:ring-orange-800/60 shadow-sm">
-                        <svg class="h-10 w-10 text-orange-500 dark:text-orange-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                    <div class="mx-auto flex h-16 w-16 items-center justify-center text-orange-500 dark:text-orange-400">
+                        <svg class="h-10 w-10" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                             <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
                     </div>
-                    <h3 class="mt-6 text-xl font-semibold text-gray-900 dark:text-white">Sorgu Analizi Yapılandırılmadı</h3>
+                    <h2 class="mt-6 text-xl font-semibold text-gray-900 dark:text-white">Sorgu Analizi Yapılandırılmadı</h2>
                     <p class="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto leading-relaxed">
-                        Sorgu performans geçmişini görüntülemek için yapılandırma dosyanıza PMM QAN gösterge panelinize işaret eden bir <code class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 text-xs" style="font-family: 'JetBrains Mono', ui-monospace, monospace;">query_iframe</code> URL'si ekleyin.
+                        Sorgu performans geçmişini görüntülemek için yapılandırma dosyanıza PMM QAN gösterge panelinize işaret eden bir <code class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 text-xs font-mono">pmm_qan_url</code> URL'si ekleyin.
                     </p>
                 </div>
             </div>
@@ -124,13 +119,7 @@
     </div>
 
     <script>
-        // Tailwind config
-        tailwind.config = {
-            darkMode: 'class'
-        }
-
-        // Check for dark mode preference on load
-        document.documentElement.classList.toggle('dark', localStorage.getItem('darkMode') === 'true');
+        // Dark mode state is applied in <head> before first paint.
 
         // Sync embedded Grafana iframes to the current light/dark theme by
         // injecting ?theme=light|dark into the iframe URL. Initial src is set

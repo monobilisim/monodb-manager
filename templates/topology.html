@@ -4,11 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cluster Topolojisi</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="preload" href="/static/fonts/manrope-latin-ext.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/static/fonts/manrope-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/static/app.css">
     {{template "sidebar-head"}}
-    <script src="https://cdn.tailwindcss.com"></script>
     <style>
         /* Animated dashed stroke on SVG connection lines to suggest WAL flow
            direction from leader -> replica. */
@@ -31,11 +30,11 @@
 
     <div class="flex min-h-screen">
 
-        {{template "sidebar" "topology"}}
+        {{template "sidebar" (dict "Page" "topology" "Auth" .Auth)}}
 
         <div class="main-wrapper flex-1 lg:ml-64 min-w-0 flex flex-col">
 
-            <main class="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8 space-y-8">
+            <main id="main" class="flex-1 w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8 space-y-8">
 
                 <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
                     <div class="flex items-start gap-3 min-w-0">
@@ -43,11 +42,7 @@
                             <svg class="w-5 h-5" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
                         </button>
                         <div class="min-w-0">
-                            <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">
-                                <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="6.5" y1="6.5" x2="10" y2="10"/><line x1="17.5" y1="6.5" x2="14" y2="10"/><line x1="6.5" y1="17.5" x2="10" y2="14"/><line x1="17.5" y1="17.5" x2="14" y2="14"/></svg>
-                                Replikasyon Grafiği
-                            </div>
-                            <h1 class="mt-2 text-3xl sm:text-4xl font-bold tracking-tight text-gray-900 dark:text-white">Cluster Topolojisi</h1>
+                            <h1 class="text-3xl sm:text-4xl font-bold tracking-tight text-gray-900 dark:text-white">Cluster Topolojisi</h1>
                             <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">Canlı Patroni cluster üyeleri, rolleri ve replikasyon gecikmesi.</p>
                         </div>
                     </div>
@@ -89,9 +84,7 @@
     </div>
 
     <script>
-        // Tailwind config
-        tailwind.config = { darkMode: 'class' };
-        document.documentElement.classList.toggle('dark', localStorage.getItem('darkMode') === 'true');
+        // Dark mode state is applied in <head> before first paint.
 
         function toggleDarkMode() {
             const isDark = document.documentElement.classList.toggle('dark');
@@ -304,7 +297,7 @@
                             <span class="font-mono text-sm font-bold text-gray-900 dark:text-white truncate">${addr}</span>
                             <span class="text-xs text-gray-500 dark:text-gray-400 truncate">(${escHtml(roleTxt)})</span>
                         </div>
-                        <div class="flex items-center gap-1 shrink-0 text-gray-400 dark:text-gray-500">
+                        <div class="flex items-center gap-1 shrink-0 text-gray-500 dark:text-gray-400">
                             <a href="${patroniURL}" target="_blank" rel="noopener" title="Patroni API'sini Aç" class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">${ICON_EXT}</a>
                             <button type="button" title="Node Ayarları" aria-label="Node Ayarları" class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">${ICON_GEAR}</button>
                         </div>
@@ -312,7 +305,7 @@
                     <div class="px-4 py-3 text-sm">
                         ${rows.join('')}
                     </div>
-                    <footer class="flex items-center justify-center border-t border-gray-100 dark:border-gray-700/60 py-1 text-gray-400 dark:text-gray-500">
+                    <footer class="flex items-center justify-center border-t border-gray-100 dark:border-gray-700/60 py-1 text-gray-500 dark:text-gray-400">
                         <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                     </footer>
                 </div>
@@ -367,7 +360,7 @@
                         <div class="flex items-center justify-between mb-4">
                             <h2 class="text-xl font-semibold text-gray-900 dark:text-white">${escHtml(server.name)}</h2>
                         </div>
-                        <div class="rounded-lg ring-1 ring-red-300 dark:ring-red-700 bg-red-50 dark:bg-red-950 text-red-800 dark:text-red-200 px-4 py-3 text-sm">
+                        <div class="bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-200 px-4 py-3 text-sm">
                             <div class="font-semibold mb-1">Cluster keşfedilemedi</div>
                             <div class="font-mono text-xs break-all">${escHtml(server.error)}</div>
                         </div>
@@ -399,16 +392,16 @@
 
             const lbBlock = lbHTML
                 ? `
-                    <div class="lb-group group-box flex-1 min-w-0 rounded-xl ring-1 ring-dashed ring-gray-300 dark:ring-gray-700 bg-gray-50/60 dark:bg-gray-900/40 p-5">
-                        <div class="text-xs font-bold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400 mb-4">Yük Dengeleyiciler</div>
+                    <div class="lb-group flex-1 min-w-0">
+                        <div class="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400 mb-3">Yük Dengeleyiciler</div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-3">${lbHTML}</div>
                     </div>
                 `
                 : '';
 
             return `
-                <section data-cluster="${escHtml(server.name)}" class="cluster-card relative rounded-xl shadow-sm ring-1 ring-gray-200 dark:ring-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
-                    <header class="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <section data-cluster="${escHtml(server.name)}" class="cluster-card relative">
+                    <header class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-gray-200 dark:border-gray-700">
                         <h2 class="text-lg font-bold tracking-tight text-gray-900 dark:text-white uppercase">${escHtml(server.name)} Topolojisi</h2>
                         <div class="flex flex-wrap items-center gap-2 text-xs">
                             <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200 ring-1 ring-inset ring-emerald-200 dark:ring-emerald-800">
@@ -423,7 +416,7 @@
                         </div>
                     </header>
 
-                    <div class="relative px-6 py-8">
+                    <div class="relative pt-6 pb-2">
                         <svg class="connections-svg absolute inset-0 w-full h-full pointer-events-none" aria-hidden="true">
                             <defs>
                                 <marker id="arrow-${escHtml(server.name).replace(/[^a-z0-9]/gi, '-')}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
@@ -434,8 +427,8 @@
 
                         <div class="relative flex flex-col xl:flex-row gap-6 xl:gap-10 items-stretch">
                             ${lbBlock}
-                            <div class="db-group group-box flex-[2] min-w-0 rounded-xl ring-1 ring-dashed ring-gray-300 dark:ring-gray-700 bg-gray-50/60 dark:bg-gray-900/40 p-5">
-                                <div class="text-xs font-bold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400 mb-4">Veritabanı Node'ları</div>
+                            <div class="db-group flex-[2] min-w-0">
+                                <div class="text-[11px] font-bold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400 mb-3">Veritabanı Node'ları</div>
                                 <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-6 items-start">
                                     <div class="leader-col">
                                         ${renderLeaderCard(leader)}

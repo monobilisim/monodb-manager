@@ -14,10 +14,36 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: stable
+          go-version-file: go.mod
 
       - name: Build
         run: go build -v ./...
 
       - name: Vet
         run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Stylesheet is up to date
+        run: |
+          npm run build:css
+          git diff --exit-code static/app.css

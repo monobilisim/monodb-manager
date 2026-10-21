@@ -27,7 +27,7 @@
         background: #ffffff;
         border-right: 1px solid rgb(229 231 235);
         transform: translateX(-100%);
-        transition: transform 200ms ease-out, width 200ms ease-out;
+        transition: transform 200ms ease-out;
     }
     html.dark #app-sidebar {
         background: rgb(3 7 18);
@@ -38,7 +38,6 @@
         min-width: 0;
         display: flex;
         flex-direction: column;
-        transition: margin-left 200ms ease-out;
     }
     #sidebar-backdrop {
         position: fixed;
@@ -78,13 +77,13 @@
     .sidebar-link:hover { background-color: rgb(243 244 246); color: rgb(17 24 39); }
     html.dark .sidebar-link:hover { background-color: rgb(31 41 55); color: rgb(255 255 255); }
     .sidebar-link.is-active {
-        background: linear-gradient(to bottom right, rgb(79 70 229), rgb(67 56 202));
+        background-color: rgb(79 70 229);
         color: rgb(255 255 255);
         box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
         font-weight: 600;
     }
     .sidebar-link.is-active:hover {
-        background: linear-gradient(to bottom right, rgb(99 102 241), rgb(79 70 229));
+        background-color: rgb(67 56 202);
         color: rgb(255 255 255);
     }
     .sidebar-icon {
@@ -135,67 +134,89 @@
 {{end}}
 
 {{define "sidebar"}}
+<a href="#main" class="skip-link">İçeriğe geç</a>
 <div id="sidebar-backdrop" onclick="toggleSidebar()" class="lg:hidden hidden"></div>
 
 <aside id="app-sidebar" data-sidebar-root>
     <a href="/" class="sidebar-brand" aria-label="Ana sayfa">
-        <span class="sidebar-brand-logo inline-flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-700 text-white shadow-sm ring-1 ring-indigo-600/20 shrink-0">
+        <span class="sidebar-brand-logo inline-flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-600/20 shrink-0">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.657 4.03 3 9 3s9-1.343 9-3V5"/><path d="M3 12c0 1.657 4.03 3 9 3s9-1.343 9-3"/></svg>
         </span>
         <div class="sidebar-brand-text min-w-0">
-            <div class="text-sm font-bold tracking-tight text-gray-900 dark:text-white leading-tight">MonoDB<span class="text-indigo-600 dark:text-indigo-400">Manager</span></div>
-            <div class="text-[11px] text-gray-500 dark:text-gray-500 leading-tight">PostgreSQL Yönetim Paneli</div>
+            <div class="text-sm font-bold tracking-tight text-gray-900 dark:text-white leading-tight">MonoDB <span class="text-indigo-600 dark:text-indigo-400">Manager</span></div>
+            <div class="text-[11px] text-gray-500 dark:text-gray-400 leading-tight">PostgreSQL Yönetim Paneli</div>
         </div>
     </a>
 
     <nav class="flex-1 overflow-y-auto p-3 space-y-1">
-        <div class="sidebar-section px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">Genel Bakış</div>
+        <div class="sidebar-section px-3 pt-2 pb-1 text-[11px] font-bold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Genel Bakış</div>
 
-        <a href="/" title="Durum" class="sidebar-link group {{if eq . "status"}}is-active{{end}}">
+        <a href="/" title="Durum" class="sidebar-link group {{if eq .Page "status"}}is-active{{end}}">
             <svg class="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
             <span class="sidebar-label">Durum</span>
-            {{if eq . "status"}}<span class="sidebar-active-dot ml-auto h-1.5 w-1.5 rounded-full bg-white"></span>{{end}}
+            {{if eq .Page "status"}}<span class="sidebar-active-dot ml-auto h-1.5 w-1.5 rounded-full bg-white"></span>{{end}}
         </a>
 
-        <a href="/topology" title="Topoloji" class="sidebar-link group {{if eq . "topology"}}is-active{{end}}">
+        <a href="/topology" title="Topoloji" class="sidebar-link group {{if eq .Page "topology"}}is-active{{end}}">
             <svg class="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="5" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="6.5" y1="6.5" x2="10" y2="10"/><line x1="17.5" y1="6.5" x2="14" y2="10"/><line x1="6.5" y1="17.5" x2="10" y2="14"/><line x1="17.5" y1="17.5" x2="14" y2="14"/></svg>
             <span class="sidebar-label">Topoloji</span>
-            {{if eq . "topology"}}<span class="sidebar-active-dot ml-auto h-1.5 w-1.5 rounded-full bg-white"></span>{{end}}
+            {{if eq .Page "topology"}}<span class="sidebar-active-dot ml-auto h-1.5 w-1.5 rounded-full bg-white"></span>{{end}}
         </a>
 
-        <div class="sidebar-section px-3 pt-4 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">Performans</div>
+        <div class="sidebar-section px-3 pt-4 pb-1 text-[11px] font-bold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Performans</div>
 
-        <a href="/query-analytics" title="Sorgu Analizi" class="sidebar-link group {{if eq . "query-analytics"}}is-active{{end}}">
+        <a href="/query-analytics" title="Sorgu Analizi" class="sidebar-link group {{if eq .Page "query-analytics"}}is-active{{end}}">
             <svg class="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-5"/></svg>
             <span class="sidebar-label">Sorgu Analizi</span>
-            {{if eq . "query-analytics"}}<span class="sidebar-active-dot ml-auto h-1.5 w-1.5 rounded-full bg-white"></span>{{end}}
+            {{if eq .Page "query-analytics"}}<span class="sidebar-active-dot ml-auto h-1.5 w-1.5 rounded-full bg-white"></span>{{end}}
         </a>
 
-        <a href="/query" title="Aktif Sorgular" class="sidebar-link group {{if eq . "query"}}is-active{{end}}">
+        <a href="/query" title="Aktif Sorgular" class="sidebar-link group {{if eq .Page "query"}}is-active{{end}}">
             <svg class="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
             <span class="sidebar-label">Aktif Sorgular</span>
-            {{if eq . "query"}}<span class="sidebar-active-dot ml-auto h-1.5 w-1.5 rounded-full bg-white"></span>{{end}}
+            {{if eq .Page "query"}}<span class="sidebar-active-dot ml-auto h-1.5 w-1.5 rounded-full bg-white"></span>{{end}}
         </a>
 
-        <div class="sidebar-section px-3 pt-4 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">Yönetim</div>
+        <div class="sidebar-section px-3 pt-4 pb-1 text-[11px] font-bold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">Yönetim</div>
 
-        <a href="/users" title="Kullanıcılar" class="sidebar-link group {{if eq . "users"}}is-active{{end}}">
+        <a href="/users" title="Kullanıcılar" class="sidebar-link group {{if eq .Page "users"}}is-active{{end}}">
             <svg class="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             <span class="sidebar-label">Kullanıcılar</span>
-            {{if eq . "users"}}<span class="sidebar-active-dot ml-auto h-1.5 w-1.5 rounded-full bg-white"></span>{{end}}
+            {{if eq .Page "users"}}<span class="sidebar-active-dot ml-auto h-1.5 w-1.5 rounded-full bg-white"></span>{{end}}
+        </a>
+
+        {{if .Auth.IsAdmin}}
+        <a href="/settings/users" title="Panel Kullanıcıları" class="sidebar-link group {{if eq .Page "settings-users"}}is-active{{end}}">
+            <svg class="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span class="sidebar-label">Panel Kullanıcıları</span>
+            {{if eq .Page "settings-users"}}<span class="sidebar-active-dot ml-auto h-1.5 w-1.5 rounded-full bg-white"></span>{{end}}
+        </a>
+        {{end}}
+
+        <a href="/settings/password" title="Parola" class="sidebar-link group {{if eq .Page "settings-password"}}is-active{{end}}">
+            <svg class="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span class="sidebar-label">Parola</span>
+            {{if eq .Page "settings-password"}}<span class="sidebar-active-dot ml-auto h-1.5 w-1.5 rounded-full bg-white"></span>{{end}}
         </a>
     </nav>
 
     <div class="sidebar-footer p-3 border-t border-gray-200 dark:border-gray-800 shrink-0">
         <div class="sidebar-footer-card flex items-center gap-3 rounded-lg bg-gray-50 dark:bg-gray-900 px-3 py-2.5 ring-1 ring-inset ring-gray-200 dark:ring-gray-800">
-            <span class="relative flex h-2 w-2 shrink-0">
-                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
             </span>
             <div class="sidebar-footer-text min-w-0 text-xs">
-                <div class="font-semibold text-gray-900 dark:text-white">Canlı izleme</div>
-                <div class="text-gray-500 dark:text-gray-400 truncate">Her 30 saniyede yenilenir</div>
+                <div class="font-semibold text-gray-900 dark:text-white truncate">{{.Auth.Username}}</div>
+                <div class="text-gray-500 dark:text-gray-400 truncate">{{.Auth.RoleLabel}}</div>
             </div>
+            <form method="post" action="/logout" class="sidebar-footer-text ml-auto shrink-0">
+                <button type="submit" title="Çıkış yap" aria-label="Çıkış yap" class="rounded-md p-1.5 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white transition-colors">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                </button>
+            </form>
+        </div>
+        <div class="sidebar-footer-text mt-2 flex items-center gap-3 px-1 text-[11px] text-gray-500 dark:text-gray-400">
+            <span class="flex items-center gap-1.5"><span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>Canlı bağlantı</span>
         </div>
     </div>
 
@@ -205,7 +226,7 @@
         onclick="toggleSidebarCollapse()"
         aria-label="Kenar çubuğunu daralt/genişlet"
         title="Kenar çubuğunu daralt/genişlet"
-        class="hidden lg:flex absolute top-20 -right-3 z-10 h-6 w-6 items-center justify-center rounded-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white hover:border-gray-300 dark:hover:border-gray-600 transition-colors">
+        class="hidden lg:flex absolute bottom-28 -right-3 z-10 h-6 w-6 items-center justify-center rounded-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white hover:border-gray-300 dark:hover:border-gray-600 transition-colors">
         <svg class="sidebar-collapse-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <polyline points="15 18 9 12 15 6"/>
         </svg>

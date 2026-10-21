@@ -1,0 +1,11 @@
+{
+  "name": "monodb-manager-assets",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -i ./src/app.css -o ./static/app.css --minify",
+    "watch:css": "tailwindcss -i ./src/app.css -o ./static/app.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.17"
+  }
+}

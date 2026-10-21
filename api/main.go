@@ -1,15 +1,23 @@
 package api
 
 import (
+	"bufio"
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -17,43 +25,61 @@ import (
 	"html/template"
 
 	"github.com/gin-gonic/gin"
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 	"gopkg.in/yaml.v3"
 )
 
-// Global config variable to access ignore users setting
+// globalConfig is read by query helpers; it is assigned once during startup
+// before any request is served.
 var globalConfig *Config
 
 // PostgreSQLServer represents a Patroni-managed PostgreSQL cluster configuration
 type PostgreSQLServer struct {
-	Name     string `yaml:"name"`
-	User     string `yaml:"user"`
-	Password string `yaml:"password"`
-	DBName   string `yaml:"dbname"`
-	SSLMode  string `yaml:"sslmode"`
+	Name     string `yaml:"name" json:"name"`
+	User     string `yaml:"user" json:"user"`
+	Password string `yaml:"password" json:"-"`
+	DBName   string `yaml:"dbname" json:"dbname"`
+	SSLMode  string `yaml:"sslmode" json:"sslmode"`
 
 	// Patroni configuration
-	PatroniNodes    []string `yaml:"patroni_nodes"`               // List of Patroni REST API endpoints
-	PatroniPort     int      `yaml:"patroni_port,omitempty"`      // Patroni REST API port (default 8008)
-	PreferLeader    bool     `yaml:"prefer_leader,omitempty"`     // Connect to leader by default
-	ConnectToLeader bool     `yaml:"connect_to_leader,omitempty"` // Only connect to leader
+	PatroniNodes    []string `yaml:"patroni_nodes" json:"patroni_nodes"`                   // List of Patroni REST API endpoints
+	PatroniPort     int      `yaml:"patroni_port,omitempty" json:"patroni_port,omitempty"` // Patroni REST API port (default 8008)
+	ConnectToLeader bool     `yaml:"connect_to_leader,omitempty" json:"connect_to_leader"` // Only connect to leader
+}
+
+// AuthConfig configures panel authentication. Legacy username/password are
+// kept for seeding the first admin and for Basic Auth fallback.
+type AuthConfig struct {
+	Username     string `yaml:"username"`
+	Password     string `yaml:"password"`
+	Server       string `yaml:"server"`
+	SessionTTL   string `yaml:"session_ttl"`
+	CookieSecure *bool  `yaml:"cookie_secure"`
+	Disabled     bool   `yaml:"disabled"`
+}
+
+func (c AuthConfig) sessionTTL() time.Duration {
+	if c.SessionTTL == "" {
+		return 12 * time.Hour
+	}
+	ttl, err := time.ParseDuration(c.SessionTTL)
+	if err != nil || ttl <= 0 {
+		log.Printf("Warning: invalid auth.session_ttl %q, using 12h", c.SessionTTL)
+		return 12 * time.Hour
+	}
+	return ttl
+}
+
+func (c AuthConfig) secureCookies() bool {
+	return c.CookieSecure == nil || *c.CookieSecure
 }
 
 // Config holds database connection parameters and application settings
 type Config struct {
-	// Multi-server configuration
 	Servers []PostgreSQLServer `yaml:"servers"`
+	Auth    AuthConfig         `yaml:"auth"`
 
-	// Legacy single-server fields (for backward compatibility)
-	Host     string
-	Port     int
-	User     string
-	Password string
-	DBName   string
-	SSLMode  string
-
-	Databases []string `yaml:"databases"`
-	LogFile   string   `yaml:"log_file"`
+	LogFile string `yaml:"log_file"`
 
 	// PMM status iframe URL for the status page
 	PMMStatusURL string `yaml:"pmm_status_url"`
@@ -102,11 +128,14 @@ type BackendConn struct {
 	Role       string // Member role (leader, replica, etc.)
 }
 
-// ConnectionManager manages database connections to multiple PostgreSQL servers
+// ConnectionManager manages database connections to multiple PostgreSQL servers.
+// Backends are kept leader-first so callers that need a writable connection
+// (CREATE/DROP ROLE, grants) always land on the primary.
 type ConnectionManager struct {
-	backends map[string][]BackendConn
-	configs  map[string]PostgreSQLServer
-	mutex    sync.RWMutex
+	backends  map[string][]BackendConn
+	configs   map[string]PostgreSQLServer
+	mutex     sync.RWMutex
+	connectMu sync.Mutex // serialises topology discovery + reconnection
 }
 
 // NewConnectionManager creates a new connection manager
@@ -123,60 +152,66 @@ func NewConnectionManager(servers []PostgreSQLServer) *ConnectionManager {
 	return cm
 }
 
-// GetConnection returns a database connection for the specified server (backward compatibility)
+// GetConnection returns a connection for the specified server, preferring the
+// leader. Writes issued through it therefore reach the primary.
 func (cm *ConnectionManager) GetConnection(serverName string) (*sql.DB, error) {
-	backends := cm.GetBackendConnections(serverName)
-	if len(backends) == 0 {
-		return cm.establishConnection(serverName)
+	if backends := cm.GetBackendConnections(serverName); len(backends) > 0 {
+		return backends[0].DB, nil
 	}
-	return backends[0].DB, nil
+	return cm.establishConnection(serverName)
 }
 
-// GetBackendConnections returns all backend connections for the specified server
+// GetBackendConnections returns the live backend connections for a server.
+// Health checks run outside the lock; stale connections are dropped by identity
+// so a concurrent reconnect is never clobbered.
 func (cm *ConnectionManager) GetBackendConnections(serverName string) []BackendConn {
 	cm.mutex.RLock()
-	defer cm.mutex.RUnlock()
-
-	backends, exists := cm.backends[serverName]
-	if !exists {
+	backends := append([]BackendConn(nil), cm.backends[serverName]...)
+	cm.mutex.RUnlock()
+	if len(backends) == 0 {
 		return nil
 	}
 
-	// Test all connections and remove stale ones
-	validBackends := make([]BackendConn, 0, len(backends))
+	valid := make([]BackendConn, 0, len(backends))
+	var stale []*sql.DB
 	for _, backend := range backends {
-		if err := backend.DB.Ping(); err == nil {
-			validBackends = append(validBackends, backend)
-		} else {
-			log.Printf("Backend connection to %s (PID %d) is stale, removing: %v", serverName, backend.PID, err)
-			backend.DB.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		err := backend.DB.PingContext(ctx)
+		cancel()
+		if err == nil {
+			valid = append(valid, backend)
+			continue
+		}
+		log.Printf("Backend connection to %s (PID %d) is stale, removing: %v", serverName, backend.PID, err)
+		stale = append(stale, backend.DB)
+	}
+
+	if len(stale) > 0 {
+		cm.mutex.Lock()
+		remaining := cm.backends[serverName][:0]
+		for _, backend := range cm.backends[serverName] {
+			if !containsDB(stale, backend.DB) {
+				remaining = append(remaining, backend)
+			}
+		}
+		cm.backends[serverName] = remaining
+		cm.mutex.Unlock()
+
+		for _, db := range stale {
+			_ = db.Close()
 		}
 	}
 
-	// Update the stored backends if any were removed
-	if len(validBackends) != len(backends) {
-		cm.mutex.RUnlock()
-		cm.mutex.Lock()
-		cm.backends[serverName] = validBackends
-		cm.mutex.Unlock()
-		cm.mutex.RLock()
-	}
-
-	return validBackends
+	return valid
 }
 
-// removeConnection safely removes a connection from the manager
-func (cm *ConnectionManager) removeConnection(serverName string) {
-	cm.mutex.Lock()
-	defer cm.mutex.Unlock()
-
-	if backends, exists := cm.backends[serverName]; exists {
-		for _, backend := range backends {
-			backend.DB.Close()
+func containsDB(dbs []*sql.DB, target *sql.DB) bool {
+	for _, db := range dbs {
+		if db == target {
+			return true
 		}
-		delete(cm.backends, serverName)
-		log.Printf("Removed stale connections for server: %s", serverName)
 	}
+	return false
 }
 
 // discoverPatroniCluster queries Patroni REST API to discover cluster members
@@ -186,33 +221,43 @@ func (cm *ConnectionManager) discoverPatroniCluster(config PostgreSQLServer) (*P
 		patroniPort = 8008 // Default Patroni REST API port
 	}
 
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-	}
+	client := &http.Client{Timeout: 5 * time.Second}
 
 	// Try each Patroni node to get cluster information
 	for _, node := range config.PatroniNodes {
-		url := fmt.Sprintf("http://%s:%d/cluster", node, patroniPort)
-		resp, err := client.Get(url)
+		clusterURL := fmt.Sprintf("http://%s/cluster", net.JoinHostPort(node, strconv.Itoa(patroniPort)))
+		resp, err := client.Get(clusterURL)
 		if err != nil {
 			log.Printf("Failed to connect to Patroni node %s: %v", node, err)
 			continue
 		}
-		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
 			log.Printf("Patroni node %s returned status %d", node, resp.StatusCode)
 			continue
 		}
 
 		var cluster PatroniCluster
-		if err := json.NewDecoder(resp.Body).Decode(&cluster); err != nil {
-			log.Printf("Failed to decode Patroni response from %s: %v", node, err)
+		decodeErr := json.NewDecoder(resp.Body).Decode(&cluster)
+		_ = resp.Body.Close()
+		if decodeErr != nil {
+			log.Printf("Failed to decode Patroni response from %s: %v", node, decodeErr)
 			continue
 		}
 
 		log.Printf("Successfully discovered Patroni cluster from node %s: %d members, leader: %s",
 			node, len(cluster.Members), cluster.Leader)
+		// Some Patroni versions omit the top-level leader field; derive it
+		// from the member roles so callers always get a name.
+		if cluster.Leader == "" {
+			for _, member := range cluster.Members {
+				if member.Role == "leader" {
+					cluster.Leader = member.Name
+					break
+				}
+			}
+		}
 		return &cluster, nil
 	}
 
@@ -226,33 +271,29 @@ func (cm *ConnectionManager) establishPatroniConnection(serverName string) (*sql
 		return nil, fmt.Errorf("server %s not found in configuration", serverName)
 	}
 
+	cm.connectMu.Lock()
+	defer cm.connectMu.Unlock()
+
+	// Another goroutine may have connected while we waited for the lock.
+	cm.mutex.RLock()
+	existing := cm.backends[serverName]
+	cm.mutex.RUnlock()
+	if len(existing) > 0 {
+		return existing[0].DB, nil
+	}
+
 	cluster, err := cm.discoverPatroniCluster(config)
 	if err != nil {
-		return nil, fmt.Errorf("failed to discover Patroni cluster for %s: %v", serverName, err)
+		return nil, fmt.Errorf("failed to discover Patroni cluster for %s: %w", serverName, err)
 	}
 
-	cm.mutex.Lock()
-	defer cm.mutex.Unlock()
+	var leaders, replicas []BackendConn
 
-	// Clear existing connections for this server
-	if backends, exists := cm.backends[serverName]; exists {
-		for _, backend := range backends {
-			backend.DB.Close()
-		}
-		delete(cm.backends, serverName)
-	}
-
-	var backends []BackendConn
-	var leaderConn *BackendConn
-
-	// Connect to each cluster member
 	for _, member := range cluster.Members {
-		// Skip if we only want leader connections and this isn't the leader
 		if config.ConnectToLeader && member.Role != "leader" {
 			continue
 		}
 
-		// Connect to this specific member
 		db, err := cm.createSingleConnection(config, member.Host, member.Port)
 		if err != nil {
 			log.Printf("Failed to connect to Patroni member %s (%s:%d): %v",
@@ -260,35 +301,33 @@ func (cm *ConnectionManager) establishPatroniConnection(serverName string) (*sql
 			continue
 		}
 
-		// Get PID for this connection
 		var pid int
 		if err := db.QueryRow("SELECT pg_backend_pid()").Scan(&pid); err != nil {
 			log.Printf("Failed to get backend PID for Patroni member %s: %v", member.Name, err)
-			db.Close()
+			_ = db.Close()
 			continue
 		}
 
 		backend := BackendConn{DB: db, PID: pid, MemberName: member.Name, Host: member.Host, Port: member.Port, Role: member.Role}
-		backends = append(backends, backend)
-
 		if member.Role == "leader" {
-			leaderConn = &backend
+			leaders = append(leaders, backend)
+		} else {
+			replicas = append(replicas, backend)
 		}
 
 		log.Printf("Connected to Patroni member %s (%s:%d) - Role: %s, State: %s, PID: %d",
 			member.Name, member.Host, member.Port, member.Role, member.State, pid)
 	}
 
+	backends := append(leaders, replicas...)
 	if len(backends) == 0 {
 		return nil, fmt.Errorf("failed to connect to any Patroni cluster members for %s", serverName)
 	}
 
+	cm.mutex.Lock()
 	cm.backends[serverName] = backends
+	cm.mutex.Unlock()
 
-	// Return leader connection if preferred, otherwise return first available
-	if config.PreferLeader && leaderConn != nil {
-		return leaderConn.DB, nil
-	}
 	return backends[0].DB, nil
 }
 
@@ -301,7 +340,7 @@ func (cm *ConnectionManager) getLeaderConnectionDetails(serverName string) (stri
 
 	cluster, err := cm.discoverPatroniCluster(config)
 	if err != nil {
-		return "", 0, fmt.Errorf("failed to discover Patroni cluster for %s: %v", serverName, err)
+		return "", 0, fmt.Errorf("failed to discover Patroni cluster for %s: %w", serverName, err)
 	}
 
 	// Find the leader node
@@ -324,45 +363,44 @@ func (cm *ConnectionManager) establishConnection(serverName string) (*sql.DB, er
 	return cm.establishPatroniConnection(serverName)
 }
 
-// createSingleConnection creates a single database connection to a specific host:port
-func (cm *ConnectionManager) createSingleConnection(config PostgreSQLServer, host string, port int) (*sql.DB, error) {
-	connStr := fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-		host,
-		port,
-		config.User,
-		config.Password,
-		config.DBName,
-		config.SSLMode,
-	)
-
-	db, err := sql.Open("postgres", connStr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open connection to %s: %v", config.Name, err)
+// connectionString builds a URL-style DSN. URL encoding keeps passwords with
+// spaces, quotes or slashes intact (key=value DSNs would silently truncate).
+func connectionString(config PostgreSQLServer, host string, port int, dbName string) string {
+	u := &url.URL{
+		Scheme: "postgres",
+		User:   url.UserPassword(config.User, config.Password),
+		Host:   net.JoinHostPort(host, strconv.Itoa(port)),
+		Path:   "/" + dbName,
 	}
-
-	if err := db.Ping(); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to ping %s: %v", config.Name, err)
+	if config.SSLMode != "" {
+		q := u.Query()
+		q.Set("sslmode", config.SSLMode)
+		u.RawQuery = q.Encode()
 	}
-
-	// Configure connection pooling for persistent connections
-	db.SetMaxIdleConns(1)
-	db.SetConnMaxIdleTime(0) // Keep connections open indefinitely
-
-	return db, nil
+	return u.String()
 }
 
-// GetServerNames returns all configured server names
-func (cm *ConnectionManager) GetServerNames() []string {
-	cm.mutex.RLock()
-	defer cm.mutex.RUnlock()
-
-	names := make([]string, 0, len(cm.configs))
-	for name := range cm.configs {
-		names = append(names, name)
+// createSingleConnection creates a single database connection to a specific host:port
+func (cm *ConnectionManager) createSingleConnection(config PostgreSQLServer, host string, port int) (*sql.DB, error) {
+	db, err := sql.Open("postgres", connectionString(config, host, port, config.DBName))
+	if err != nil {
+		return nil, fmt.Errorf("failed to open connection to %s: %w", config.Name, err)
 	}
-	return names
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("failed to ping %s: %w", config.Name, err)
+	}
+
+	// One persistent connection per backend; queries must not pile up on a
+	// replica while the page polls every few seconds.
+	db.SetMaxOpenConns(2)
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxIdleTime(0)
+
+	return db, nil
 }
 
 // GetServerConfig returns the configuration for a specific server
@@ -391,22 +429,22 @@ func (cm *ConnectionManager) Close() {
 }
 
 type User struct {
-	Username   string     `db:"usename"`
-	Superuser  bool       `db:"usesuper"`
-	CreateDB   bool       `db:"usecreatedb"`
-	CreateRole bool       `db:"rolcreaterole"`
-	ValidUntil *time.Time `db:"valuntil"`
-	Databases  []string   // Add this field
+	Username   string
+	Superuser  bool
+	CreateDB   bool
+	CreateRole bool
+	ValidUntil *time.Time
+	Databases  []string
 }
 
-// Add near the top with other structs
+// HAProxyPort is a routing endpoint advertised by HAProxy.
 type HAProxyPort struct {
 	Port   int    `yaml:"port"`
 	Type   string `yaml:"type"`
 	Status string `yaml:"status"`
 }
 
-// Add these new structs
+// ServiceNode is one Uptime Kuma badge endpoint for a service.
 type ServiceNode struct {
 	URL string `yaml:"url"`
 }
@@ -416,32 +454,43 @@ type Service struct {
 	Nodes []ServiceNode `yaml:"nodes"`
 }
 
+// NodeHeader labels a service-table column with its Patroni member name and host.
+type NodeHeader struct {
+	Name   string
+	Detail string
+}
+
+// PageData is the template payload for the users page.
 type PageData struct {
-	Servers              []PostgreSQLServer
-	SelectedServer       string
-	Users                []User
-	Databases            []string
-	HAPorts              []HAProxyPort
-	Services             []Service
-	PMMStatusURL         string
-	PMMQanURL            string
-	BadgeRefreshInterval int
+	Users     []User   `json:"users"`
+	Databases []string `json:"databases"`
+	Auth      UserView `json:"-"`
 }
 
-// Add this after the User struct
+// CreateUserRequest is the JSON body of POST /api/v1/users.
 type CreateUserRequest struct {
-	Username  string   `form:"username"`
-	Password  string   `form:"password"`
-	Databases []string `form:"databases"`
+	Username  string   `json:"username"`
+	Password  string   `json:"password"`
+	Databases []string `json:"databases"`
 }
 
-// Add this struct after the existing ones
 type Query struct {
 	PID      int    `json:"pid"`
 	Username string `json:"username"`
 	Database string `json:"database"`
 	Duration string `json:"duration"`
 	Query    string `json:"query"`
+}
+
+// QueryWithServer is an active query annotated with the member it runs on.
+type QueryWithServer struct {
+	Query
+	Server     string `json:"server"`
+	BackendPID int    `json:"backend_pid"`
+	MemberName string `json:"member_name"`
+	MemberHost string `json:"member_host"`
+	MemberPort int    `json:"member_port"`
+	MemberRole string `json:"member_role"`
 }
 
 // TopologyMember describes a node in the Patroni cluster with replication detail.
@@ -474,50 +523,39 @@ type TopologyResponse struct {
 }
 
 func getTemplatesDir(configuredPath string) string {
-	// If templates dir is configured, use that
 	if configuredPath != "" {
-		// Check if the directory exists
 		if _, err := os.Stat(configuredPath); err == nil {
 			return filepath.Join(configuredPath, "*")
 		}
 		log.Printf("Warning: Configured templates directory %s not found", configuredPath)
 	}
 
-	// Try relative to current working directory
+	// Working directory (development) then next to the binary (packaged).
 	if _, err := os.Stat("templates"); err == nil {
 		return "templates/*"
 	}
-
-	// Try relative to binary location
-	exePath, err := os.Executable()
-	if err == nil {
-		binDir := filepath.Dir(exePath)
-		templatesPath := filepath.Join(binDir, "templates", "*")
-		if _, err := os.Stat(filepath.Dir(templatesPath)); err == nil {
-			return templatesPath
+	if exePath, err := os.Executable(); err == nil {
+		templatesDir := filepath.Join(filepath.Dir(exePath), "templates")
+		if _, err := os.Stat(templatesDir); err == nil {
+			return filepath.Join(templatesDir, "*")
 		}
 	}
-	// No on-disk templates found; signal the caller to use embedded templates.
+	// No on-disk templates found; signal the caller to use the embedded copies.
 	return ""
 }
 
-// buildUserFilterClause creates a SQL WHERE clause to filter out ignored users
-func buildUserFilterClause() string {
+// ignoredUsers returns the configured ignore list as a non-nil slice so it can
+// be bound as a text[] parameter (nil would bind as NULL and match no rows).
+func ignoredUsers() []string {
 	if globalConfig == nil || len(globalConfig.IgnoreUsers) == 0 {
-		return ""
+		return []string{}
 	}
-
-	var filters []string
-	for _, user := range globalConfig.IgnoreUsers {
-		filters = append(filters, fmt.Sprintf("usename != '%s'", strings.ReplaceAll(user, "'", "''")))
-	}
-
-	return "AND " + strings.Join(filters, " AND ")
+	return globalConfig.IgnoreUsers
 }
 
 // loadConfig loads the main configuration file including servers and other settings
 func loadConfig(configPath string) (*Config, error) {
-	data, err := os.ReadFile(configPath)
+	data, err := os.ReadFile(configPath) // #nosec G304 -- path comes from the -config flag
 	if err != nil {
 		return nil, err
 	}
@@ -528,29 +566,6 @@ func loadConfig(configPath string) (*Config, error) {
 	}
 
 	return &config, nil
-}
-
-// Update the Config struct in loadHAProxyConfig
-func loadHAProxyConfig(configPath string) ([]HAProxyPort, []Service, string, int, string, error) {
-	type Config struct {
-		Ports                []HAProxyPort `yaml:"ports"`
-		Services             []Service     `yaml:"services"`
-		PMMStatusURL         string        `yaml:"pmm_status_url"`
-		BadgeRefreshInterval int           `yaml:"badge_refresh_interval"`
-		PMMQanURL            string        `yaml:"pmm_qan_url"`
-	}
-
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return nil, nil, "", 0, "", err
-	}
-
-	var config Config
-	if err := yaml.Unmarshal(data, &config); err != nil {
-		return nil, nil, "", 0, "", err
-	}
-
-	return config.Ports, config.Services, config.PMMStatusURL, config.BadgeRefreshInterval, config.PMMQanURL, nil
 }
 
 // replaceBadgeWithDashboard rewrites an Uptime Kuma badge URL into the
@@ -622,10 +637,9 @@ func pmmOpenURL(raw string) string {
 // "db@server" compound format). Per-database table-privilege verification is
 // done in parallel with a bounded worker pool (one connection per unique DB
 // per server instead of one per (user, db) pair).
-func aggregateUsers(cm *ConnectionManager, servers []PostgreSQLServer) ([]User, []string) {
+func aggregateUsers(ctx context.Context, cm *ConnectionManager, servers []PostgreSQLServer) ([]User, []string) {
 	var allUsers []User
 	databaseSet := make(map[string]bool)
-	var dbSetMu sync.Mutex
 
 	for _, server := range servers {
 		db, err := cm.GetConnection(server.Name)
@@ -634,8 +648,7 @@ func aggregateUsers(cm *ConnectionManager, servers []PostgreSQLServer) ([]User, 
 			continue
 		}
 
-		// Fetch user list
-		rows, err := db.Query(`
+		rows, err := db.QueryContext(ctx, `
 			SELECT
 				usename,
 				usesuper,
@@ -676,7 +689,7 @@ func aggregateUsers(cm *ConnectionManager, servers []PostgreSQLServer) ([]User, 
 
 			if user.Superuser || originalUsername == "postgres" {
 				// Superusers / postgres see all non-template databases.
-				dbRows, err := db.Query(`
+				dbRows, err := db.QueryContext(ctx, `
 					SELECT datname
 					FROM pg_database
 					WHERE datistemplate = false
@@ -691,12 +704,12 @@ func aggregateUsers(cm *ConnectionManager, servers []PostgreSQLServer) ([]User, 
 							databaseSet[qualifiedDBName] = true
 						}
 					}
-					dbRows.Close()
+					_ = dbRows.Close()
 				}
 				pending = append(pending, pendingUser{user: user, origName: originalUsername})
 			} else {
 				// Regular user: candidate DBs are those with CONNECT privilege.
-				dbRows, err := db.Query(`
+				dbRows, err := db.QueryContext(ctx, `
 					SELECT d.datname
 					FROM pg_database d
 					WHERE d.datistemplate = false
@@ -711,7 +724,7 @@ func aggregateUsers(cm *ConnectionManager, servers []PostgreSQLServer) ([]User, 
 							candidates = append(candidates, dbName)
 						}
 					}
-					dbRows.Close()
+					_ = dbRows.Close()
 				}
 				pending = append(pending, pendingUser{
 					user:       user,
@@ -720,7 +733,7 @@ func aggregateUsers(cm *ConnectionManager, servers []PostgreSQLServer) ([]User, 
 				})
 			}
 		}
-		rows.Close()
+		_ = rows.Close()
 
 		// Collect the unique DB names we need to probe (public-schema table grantees).
 		uniqueDBs := make(map[string]struct{})
@@ -734,15 +747,11 @@ func aggregateUsers(cm *ConnectionManager, servers []PostgreSQLServer) ([]User, 
 		}
 
 		// Resolve leader connection details ONCE per server (was: per user-db pair).
-		var (
-			leaderHost    string
-			leaderPort    int
-			leaderErr     error
-			leaderFetched bool
-		)
+		var leaderHost string
+		var leaderPort int
 		if len(uniqueDBs) > 0 {
+			var leaderErr error
 			leaderHost, leaderPort, leaderErr = cm.getLeaderConnectionDetails(server.Name)
-			leaderFetched = true
 			if leaderErr != nil {
 				log.Printf("Error getting leader connection details for %s: %v", server.Name, leaderErr)
 			}
@@ -752,7 +761,7 @@ func aggregateUsers(cm *ConnectionManager, servers []PostgreSQLServer) ([]User, 
 		granteesByDB := make(map[string]map[string]bool)
 		var granteesMu sync.Mutex
 
-		if leaderFetched && leaderErr == nil {
+		if leaderHost != "" {
 			var wg sync.WaitGroup
 			sem := make(chan struct{}, 8)
 
@@ -763,24 +772,17 @@ func aggregateUsers(cm *ConnectionManager, servers []PostgreSQLServer) ([]User, 
 					defer wg.Done()
 					defer func() { <-sem }()
 
-					dbConnStr := fmt.Sprintf(
-						"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-						leaderHost,
-						leaderPort,
-						server.User,
-						server.Password,
-						dbName,
-						server.SSLMode,
-					)
+					probeCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+					defer cancel()
 
-					dbConn, err := sql.Open("postgres", dbConnStr)
+					dbConn, err := sql.Open("postgres", connectionString(server, leaderHost, leaderPort, dbName))
 					if err != nil {
 						log.Printf("Error opening connection to %s/%s: %v", server.Name, dbName, err)
 						return
 					}
-					defer dbConn.Close()
+					defer func() { _ = dbConn.Close() }()
 
-					granteeRows, err := dbConn.Query(`
+					granteeRows, err := dbConn.QueryContext(probeCtx, `
 						SELECT DISTINCT grantee
 						FROM information_schema.table_privileges
 						WHERE table_schema = 'public'
@@ -789,7 +791,7 @@ func aggregateUsers(cm *ConnectionManager, servers []PostgreSQLServer) ([]User, 
 						log.Printf("Error querying grantees for %s/%s: %v", server.Name, dbName, err)
 						return
 					}
-					defer granteeRows.Close()
+					defer func() { _ = granteeRows.Close() }()
 
 					set := make(map[string]bool)
 					for granteeRows.Next() {
@@ -816,23 +818,19 @@ func aggregateUsers(cm *ConnectionManager, servers []PostgreSQLServer) ([]User, 
 			}
 			for _, dbName := range p.candidates {
 				set, ok := granteesByDB[dbName]
-				if !ok {
+				if !ok || !set[p.origName] {
 					continue
 				}
-				if set[p.origName] {
-					qualifiedDBName := fmt.Sprintf("%s@%s", dbName, server.Name)
-					p.user.Databases = append(p.user.Databases, qualifiedDBName)
-					dbSetMu.Lock()
-					databaseSet[qualifiedDBName] = true
-					dbSetMu.Unlock()
-				}
+				qualifiedDBName := fmt.Sprintf("%s@%s", dbName, server.Name)
+				p.user.Databases = append(p.user.Databases, qualifiedDBName)
+				databaseSet[qualifiedDBName] = true
 			}
 			allUsers = append(allUsers, p.user)
 		}
 
 		// Populate the create-user form's database list with all non-template,
 		// non-'postgres' databases for this server.
-		dbRows, err := db.Query(`
+		dbRows, err := db.QueryContext(ctx, `
 			SELECT datname
 			FROM pg_database
 			WHERE datistemplate = false
@@ -843,11 +841,10 @@ func aggregateUsers(cm *ConnectionManager, servers []PostgreSQLServer) ([]User, 
 			for dbRows.Next() {
 				var dbName string
 				if err := dbRows.Scan(&dbName); err == nil {
-					qualifiedDBName := fmt.Sprintf("%s@%s", dbName, server.Name)
-					databaseSet[qualifiedDBName] = true
+					databaseSet[fmt.Sprintf("%s@%s", dbName, server.Name)] = true
 				}
 			}
-			dbRows.Close()
+			_ = dbRows.Close()
 		}
 	}
 
@@ -855,149 +852,455 @@ func aggregateUsers(cm *ConnectionManager, servers []PostgreSQLServer) ([]User, 
 	for dbName := range databaseSet {
 		allDatabases = append(allDatabases, dbName)
 	}
+	sort.Strings(allDatabases)
 
 	return allUsers, allDatabases
 }
 
-func InitServer() {
-	// Define command line flags
-	var config Config
-	var templatesDir string
-	var configPath string
-	var serverPort string
+// splitCompound splits "name@server" on the last '@', so role names that
+// contain '@' keep working while the server suffix stays unambiguous.
+func splitCompound(value string) (name, server string, ok bool) {
+	idx := strings.LastIndex(value, "@")
+	if idx <= 0 || idx == len(value)-1 {
+		return "", "", false
+	}
+	return value[:idx], value[idx+1:], true
+}
 
-	// Multi-server mode flags
-	flag.StringVar(&configPath, "config", "", "Path to configuration file (enables multi-server mode)")
-
-	// Legacy single-server mode flags (for backward compatibility)
-	flag.StringVar(&config.Host, "host", "localhost", "PostgreSQL host")
-	flag.IntVar(&config.Port, "port", 5432, "PostgreSQL port")
-	flag.StringVar(&config.User, "user", "postgres", "PostgreSQL user")
-	flag.StringVar(&config.Password, "password", "", "PostgreSQL password")
-	flag.StringVar(&config.DBName, "dbname", "postgres", "PostgreSQL database name")
-	flag.StringVar(&config.SSLMode, "sslmode", "disable", "PostgreSQL SSL mode")
-
-	// Other flags
-	flag.StringVar(&templatesDir, "templates", "", "Path to templates directory")
-	flag.StringVar(&serverPort, "server-port", "8080", "Server port to listen on")
-	flag.Parse()
-
-	log.Println("Initializing server...")
-
-	var connectionManager *ConnectionManager
-	var servers []PostgreSQLServer
-
-	// Determine if we're in multi-server or single-server mode
-	if configPath != "" {
-		// Multi-server mode: load from config file
-		log.Printf("Loading configuration from: %s", configPath)
-		loadedConfig, err := loadConfig(configPath)
-		if err != nil {
-			log.Fatal("Failed to load configuration:", err)
+// selectedDatabases groups "dbname@server" selections by server.
+func selectedDatabases(keys []string) (map[string][]string, error) {
+	selected := make(map[string][]string)
+	for _, key := range keys {
+		dbName, serverName, ok := splitCompound(key)
+		if !ok {
+			return nil, fmt.Errorf("invalid database reference %q", key)
 		}
-
-		config = *loadedConfig
-		globalConfig = &config // Set global config for use in helper functions
-		if len(config.Servers) == 0 {
-			log.Fatal("No servers configured in config file")
+		if dbName == "postgres" {
+			return nil, errors.New("cannot grant access to postgres database")
 		}
+		selected[serverName] = append(selected[serverName], dbName)
+	}
+	if len(selected) == 0 {
+		return nil, errors.New("no valid databases selected")
+	}
+	for _, databases := range selected {
+		sort.Strings(databases)
+	}
+	return selected, nil
+}
 
-		servers = config.Servers
-		log.Printf("Configured %d PostgreSQL servers", len(servers))
-		if len(config.IgnoreUsers) > 0 {
-			log.Printf("Configured to ignore %d users in active queries: %v", len(config.IgnoreUsers), config.IgnoreUsers)
-		}
-	} else {
-		log.Fatal("Configuration file is required - single server mode is not supported. Please use -config flag with a Patroni cluster configuration.")
+// grantUserAccess grants CONNECT plus public-schema privileges on each database.
+// Failures are collected: the role already exists, so reporting them beats
+// pretending the grant applied.
+func grantUserAccess(ctx context.Context, cm *ConnectionManager, db *sql.DB, cfg PostgreSQLServer, username string, databases []string) []string {
+	host, port, err := cm.getLeaderConnectionDetails(cfg.Name)
+	if err != nil {
+		return []string{fmt.Sprintf("%s: leader discovery failed: %v", cfg.Name, err)}
 	}
 
-	// Initialize connection manager
-	connectionManager = NewConnectionManager(servers)
-	defer connectionManager.Close()
+	ident := pq.QuoteIdentifier(username)
+	var warnings []string
 
-	// Test connections to all servers
+	for _, dbName := range databases {
+		if _, err := db.ExecContext(ctx, "GRANT CONNECT ON DATABASE "+pq.QuoteIdentifier(dbName)+" TO "+ident); err != nil {
+			warnings = append(warnings, fmt.Sprintf("%s: GRANT CONNECT failed: %v", dbName, err))
+			continue
+		}
+
+		dbConn, err := sql.Open("postgres", connectionString(cfg, host, port, dbName))
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("%s: connect failed: %v", dbName, err))
+			continue
+		}
+
+		schemaQueries := []string{
+			"GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO " + ident,
+			"GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO " + ident,
+			"ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO " + ident,
+			"ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON SEQUENCES TO " + ident,
+		}
+		for _, query := range schemaQueries {
+			if _, err := dbConn.ExecContext(ctx, query); err != nil {
+				warnings = append(warnings, fmt.Sprintf("%s: %v", dbName, err))
+			}
+		}
+		_ = dbConn.Close()
+	}
+
+	return warnings
+}
+
+// revokeUserAccess drops the role's grants and owned objects in every database.
+// The role is dropped by the caller afterwards.
+func revokeUserAccess(ctx context.Context, cm *ConnectionManager, db *sql.DB, cfg PostgreSQLServer, username string) []string {
+	host, port, err := cm.getLeaderConnectionDetails(cfg.Name)
+	if err != nil {
+		return []string{fmt.Sprintf("%s: leader discovery failed: %v", cfg.Name, err)}
+	}
+
+	rows, err := db.QueryContext(ctx, "SELECT datname FROM pg_database WHERE datistemplate = false")
+	if err != nil {
+		return []string{fmt.Sprintf("list databases failed: %v", err)}
+	}
+	var databases []string
+	for rows.Next() {
+		var dbName string
+		if err := rows.Scan(&dbName); err == nil {
+			databases = append(databases, dbName)
+		}
+	}
+	_ = rows.Close()
+
+	ident := pq.QuoteIdentifier(username)
+	owner := pq.QuoteIdentifier(cfg.User)
+	var warnings []string
+
+	for _, dbName := range databases {
+		dbConn, err := sql.Open("postgres", connectionString(cfg, host, port, dbName))
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("%s: connect failed: %v", dbName, err))
+			continue
+		}
+
+		statements := []string{
+			"REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM " + ident,
+			"REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM " + ident,
+			"REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM " + ident,
+			"REVOKE ALL PRIVILEGES ON DATABASE " + pq.QuoteIdentifier(dbName) + " FROM " + ident,
+			"REASSIGN OWNED BY " + ident + " TO " + owner,
+			"DROP OWNED BY " + ident,
+		}
+		for _, query := range statements {
+			if _, err := dbConn.ExecContext(ctx, query); err != nil {
+				warnings = append(warnings, fmt.Sprintf("%s: %v", dbName, err))
+			}
+		}
+		_ = dbConn.Close()
+	}
+
+	return warnings
+}
+
+// collectActiveQueries gathers pgbouncer-agnostic activity from every member,
+// collapsing parallel workers onto their leader PID.
+func collectActiveQueries(ctx context.Context, cm *ConnectionManager, servers []PostgreSQLServer) []QueryWithServer {
+	const querySQL = `
+		SELECT DISTINCT ON (COALESCE(leader_pid, pid))
+			COALESCE(leader_pid, pid) AS pid,
+			usename,
+			COALESCE(datname, 'system') AS datname,
+			ROUND(EXTRACT(EPOCH FROM now() - query_start))::text || 's' AS duration,
+			query
+		FROM pg_stat_activity
+		WHERE state = 'active'
+			AND query NOT ILIKE '%pg_stat_activity%'
+			AND pid != pg_backend_pid()
+			AND usename::text <> ALL($1)
+		ORDER BY COALESCE(leader_pid, pid), query_start ASC`
+
+	allQueries := make([]QueryWithServer, 0)
 	for _, server := range servers {
-		_, err := connectionManager.GetConnection(server.Name)
-		if err != nil {
-			log.Printf("Warning: Failed to connect to server %s: %v", server.Name, err)
+		backends := cm.GetBackendConnections(server.Name)
+		if len(backends) == 0 {
+			log.Printf("No backend connections available for server %s", server.Name)
+			continue
+		}
+
+		for _, backend := range backends {
+			rows, err := backend.DB.QueryContext(ctx, querySQL, pq.Array(ignoredUsers()))
+			if err != nil {
+				log.Printf("Error querying active queries from server %s backend PID %d: %v", server.Name, backend.PID, err)
+				continue
+			}
+
+			for rows.Next() {
+				var q Query
+				if err := rows.Scan(&q.PID, &q.Username, &q.Database, &q.Duration, &q.Query); err != nil {
+					log.Printf("Error scanning query row from server %s backend PID %d: %v", server.Name, backend.PID, err)
+					continue
+				}
+				allQueries = append(allQueries, QueryWithServer{
+					Query:      q,
+					Server:     server.Name,
+					BackendPID: backend.PID,
+					MemberName: backend.MemberName,
+					MemberHost: backend.Host,
+					MemberPort: backend.Port,
+					MemberRole: backend.Role,
+				})
+			}
+			_ = rows.Close()
 		}
 	}
 
-	router := gin.Default()
+	return allQueries
+}
 
-	// Set the function map first
-	router.SetFuncMap(template.FuncMap{
+func securityHeaders() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "SAMEORIGIN")
+		c.Header("Referrer-Policy", "same-origin")
+		c.Next()
+	}
+}
+
+// sameOriginOnly rejects cross-site state changes. Browsers attach Origin to
+// CORS/fetch/form POSTs; non-browser API clients normally send none. Basic auth
+// is otherwise CSRF-able because browsers replay credentials automatically.
+func sameOriginOnly() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		switch c.Request.Method {
+		case http.MethodGet, http.MethodHead, http.MethodOptions:
+			c.Next()
+			return
+		}
+		if origin := c.Request.Header.Get("Origin"); origin != "" {
+			u, err := url.Parse(origin)
+			if err != nil || u.Host != c.Request.Host {
+				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "cross-origin request rejected"})
+				return
+			}
+		}
+		c.Next()
+	}
+}
+
+// templateFuncs holds helpers shared by the server and the template parse test.
+func templateFuncs() template.FuncMap {
+	return template.FuncMap{
 		"replaceBadgeWithDashboard": replaceBadgeWithDashboard,
 		"pmmEmbedURL":               pmmEmbedURL,
 		"pmmOpenURL":                pmmOpenURL,
+		"roleLabel":                 RoleLabel,
+		"dict": func(values ...any) map[string]any {
+			m := make(map[string]any, len(values)/2)
+			for i := 0; i+1 < len(values); i += 2 {
+				key, _ := values[i].(string)
+				m[key] = values[i+1]
+			}
+			return m
+		},
+		"until": func(n int) []int {
+			numbers := make([]int, n)
+			for i := range numbers {
+				numbers[i] = i + 1
+			}
+			return numbers
+		},
+		"formatDate": func(t *time.Time) string {
+			if t == nil {
+				return ""
+			}
+			return t.Format("02.01.2006")
+		},
 		// stripServer drops a trailing "@server" suffix from compound keys
 		// (e.g. "alice@calik-yepas-patroni" -> "alice") for display only.
 		// The original value must still be used for CRUD calls that depend
 		// on the username@server / database@server compound format.
 		"stripServer": func(s string) string {
-			if idx := strings.Index(s, "@"); idx != -1 {
+			if idx := strings.LastIndex(s, "@"); idx != -1 {
 				return s[:idx]
 			}
 			return s
 		},
-	})
+	}
+}
 
-	// Then load the templates: prefer on-disk templates (override), fall back
-	// to the templates embedded into the binary so releases are self-contained.
+func InitServer(assets fs.FS, version string) {
+	var templatesDir string
+	var configPath string
+	var serverPort string
+	var addUser string
+	var addRole string
+
+	flag.StringVar(&configPath, "config", "", "Path to configuration file (required)")
+	flag.StringVar(&templatesDir, "templates", "", "Path to templates directory")
+	flag.StringVar(&serverPort, "server-port", "8080", "Server port to listen on")
+	flag.StringVar(&addUser, "add-user", "", "Create or update a panel user, then exit (password read from stdin)")
+	flag.StringVar(&addRole, "role", RoleAdmin, "Role for -add-user: viewer, operator or admin")
+	flag.Parse()
+
+	log.Println("Initializing server...")
+
+	if configPath == "" {
+		log.Fatal("Configuration file is required - single server mode is not supported. Please use -config flag with a Patroni cluster configuration.")
+	}
+
+	log.Printf("Loading configuration from: %s", configPath)
+	loadedConfig, err := loadConfig(configPath)
+	if err != nil {
+		log.Fatal("Failed to load configuration:", err)
+	}
+
+	config := *loadedConfig
+	globalConfig = &config
+	if len(config.Servers) == 0 {
+		log.Fatal("No servers configured in config file")
+	}
+
+	if config.LogFile != "" {
+		logFile, err := os.OpenFile(config.LogFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+		if err != nil {
+			log.Fatalf("Failed to open log file %s: %v", config.LogFile, err)
+		}
+		defer logFile.Close()
+		log.SetOutput(io.MultiWriter(os.Stderr, logFile))
+	}
+
+	servers := config.Servers
+	log.Printf("Configured %d PostgreSQL servers", len(servers))
+	if len(config.IgnoreUsers) > 0 {
+		log.Printf("Configured to ignore %d users in active queries: %v", len(config.IgnoreUsers), config.IgnoreUsers)
+	}
+
+	connectionManager := NewConnectionManager(servers)
+	defer connectionManager.Close()
+
+	for _, server := range servers {
+		if _, err := connectionManager.GetConnection(server.Name); err != nil {
+			log.Printf("Warning: Failed to connect to server %s: %v", server.Name, err)
+		}
+	}
+
+	legacyPassword := config.Auth.Password
+	authOptions := AuthOptions{
+		LegacyUsername: config.Auth.Username,
+		Disabled:       config.Auth.Disabled,
+		CookieSecure:   config.Auth.secureCookies(),
+		SessionTTL:     config.Auth.sessionTTL(),
+	}
+	authOptions.LegacyConfigValue = legacyPassword
+
+	var panelStore UserStore
+	if !config.Auth.Disabled {
+		authServer := config.Auth.Server
+		if authServer == "" {
+			authServer = servers[0].Name
+		}
+		if _, ok := connectionManager.GetServerConfig(authServer); !ok {
+			log.Fatalf("auth.server %q is not a configured server", authServer)
+		}
+
+		store := NewPGUserStore(func() (*sql.DB, error) {
+			return connectionManager.GetConnection(authServer)
+		})
+		initCtx, initCancel := context.WithTimeout(context.Background(), 20*time.Second)
+		initErr := store.Init(initCtx)
+		if initErr == nil {
+			seedUser, seedPass := config.Auth.Username, config.Auth.Password
+			if envPass := os.Getenv("MONODB_ADMIN_PASSWORD"); envPass != "" && seedPass == "" {
+				seedUser = "admin"
+				seedPass = envPass
+			}
+			if err := SeedPanelAdmin(initCtx, store, seedUser, seedPass); err != nil {
+				log.Printf("Warning: failed to seed panel admin: %v", err)
+			}
+			panelStore = store
+		}
+		initCancel()
+
+		if initErr != nil {
+			if authOptions.LegacyUsername != "" && authOptions.LegacyConfigValue != "" {
+				log.Printf("WARNING: panel user store unavailable (%v); continuing with legacy Basic Auth only", initErr)
+			} else {
+				log.Fatalf("Panel auth database unavailable and no legacy auth configured: %v", initErr)
+			}
+		}
+	}
+
+	if addUser != "" {
+		if panelStore == nil {
+			log.Fatal("Cannot add panel user: auth store unavailable")
+		}
+		if !validUsername(addUser) {
+			log.Fatalf("Invalid panel username %q", addUser)
+		}
+		if !ValidRole(addRole) {
+			log.Fatalf("Invalid role %q (viewer|operator|admin)", addRole)
+		}
+		password, err := readPasswordLine()
+		if err != nil {
+			log.Fatal("Failed to read password from stdin:", err)
+		}
+		cliCtx, cliCancel := context.WithTimeout(context.Background(), 15*time.Second)
+		if err := UpsertPanelUser(cliCtx, panelStore, addUser, addRole, password); err != nil {
+			cliCancel()
+			log.Fatal("Failed to write panel user:", err)
+		}
+		cliCancel()
+		log.Printf("panel user %q is ready with role %s", addUser, addRole)
+		return
+	}
+
+	authenticator := NewAuthenticator(authOptions, panelStore)
+
+	if os.Getenv("GIN_MODE") == "" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+	router := gin.Default()
+	if err := router.SetTrustedProxies(nil); err != nil {
+		log.Fatal("Failed to configure trusted proxies:", err)
+	}
+
+	router.SetFuncMap(templateFuncs())
+
+	// Prefer on-disk templates (override), fall back to the embedded copies so
+	// releases are self-contained.
 	if diskGlob := getTemplatesDir(templatesDir); diskGlob != "" {
 		log.Printf("Loading templates from disk: %s", diskGlob)
 		router.LoadHTMLGlob(diskGlob)
 	} else {
 		log.Printf("Loading embedded templates")
-		tmpl := template.Must(template.New("").Funcs(router.FuncMap).ParseFS(embeddedTemplates, "templates/*.html"))
+		tmpl := template.Must(template.New("").Funcs(router.FuncMap).ParseFS(assets, "templates/*.html"))
 		router.SetHTMLTemplate(tmpl)
 	}
 
-	// Load additional config if not already loaded from main config file
-	var haPorts []HAProxyPort
-	var services []Service
-	var pmmURL string
-	var badgeRefreshInterval int
-	var queryIframeURL string
+	staticFS, err := fs.Sub(assets, "static")
+	if err != nil {
+		log.Fatal("Failed to load embedded static assets:", err)
+	}
+	router.StaticFS("/static", http.FS(staticFS))
 
-	if configPath != "" {
-		// Use values from loaded config
-		pmmURL = config.PMMStatusURL
-		queryIframeURL = config.PMMQanURL
-		badgeRefreshInterval = config.BadgeRefreshInterval
-		if badgeRefreshInterval == 0 {
-			badgeRefreshInterval = 3000
+	router.GET("/healthz", func(c *gin.Context) {
+		c.String(http.StatusOK, "ok")
+	})
+
+	router.Use(securityHeaders())
+	router.GET("/login", authenticator.LoginPage())
+	router.POST("/login", sameOriginOnly(), authenticator.Login())
+
+	app := router.Group("")
+	app.Use(authenticator.Middleware(), sameOriginOnly())
+	app.POST("/logout", authenticator.Logout())
+	app.GET("/settings/users", authenticator.Require(PermManagePanelUsers), authenticator.UsersPage())
+	app.GET("/settings/password", authenticator.PasswordPage())
+
+	haPorts := config.Ports
+	services := config.Services
+	pmmURL := config.PMMStatusURL
+	queryIframeURL := config.PMMQanURL
+	badgeRefreshInterval := config.BadgeRefreshInterval
+	if badgeRefreshInterval == 0 {
+		badgeRefreshInterval = 3000
+	}
+	log.Printf("Loaded %d HAProxy ports, %d services", len(haPorts), len(services))
+
+	// Number of service columns the status table needs: the widest service
+	// node list, not a hardcoded cluster size.
+	nodeCount := 0
+	for _, service := range services {
+		if len(service.Nodes) > nodeCount {
+			nodeCount = len(service.Nodes)
 		}
-
-		// Convert HAProxyPorts map to slice
-		haPorts = config.Ports
-		log.Printf("Loaded %d HAProxy ports from config", len(haPorts))
-
-		// Use Services directly from config
-		services = config.Services
-		log.Printf("Loaded %d services from config", len(services))
-	} else {
-		// Try to load legacy HAProxy config
-		legacyConfigPath := "config/haproxy.yaml"
-		var err error
-		haPorts, services, pmmURL, badgeRefreshInterval, queryIframeURL, err = loadHAProxyConfig(legacyConfigPath)
-		if err != nil {
-			log.Printf("Warning: Failed to load legacy config: %v", err)
-			haPorts = []HAProxyPort{}
-			services = []Service{}
-			pmmURL = ""
-			queryIframeURL = ""
-			badgeRefreshInterval = 3000
-		}
-		// Set the values in config struct
-		config.PMMQanURL = queryIframeURL
-		config.PMMStatusURL = pmmURL
 	}
 
-	// Add this route after the existing routes
-	router.GET("/", func(c *gin.Context) {
-		// Test connectivity to all servers and gather basic stats
+	app.GET("/", func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+		defer cancel()
+
 		var serverStatuses []map[string]interface{}
+		var clusterNodes []NodeHeader
 
 		for _, server := range servers {
 			status := map[string]interface{}{
@@ -1009,7 +1312,6 @@ func InitServer() {
 				"databases": 0,
 			}
 
-			// Discover Patroni cluster (all servers are Patroni clusters now)
 			cluster, err := connectionManager.discoverPatroniCluster(server)
 			if err != nil {
 				log.Printf("Error discovering Patroni cluster %s: %v", server.Name, err)
@@ -1018,26 +1320,26 @@ func InitServer() {
 				status["use_patroni"] = true
 				status["patroni_cluster"] = cluster
 				status["status"] = "patroni"
+				if len(clusterNodes) == 0 {
+					for _, member := range cluster.Members {
+						clusterNodes = append(clusterNodes, NodeHeader{Name: member.Name, Detail: member.Host})
+					}
+				}
 			}
 
 			db, err := connectionManager.GetConnection(server.Name)
 			if err != nil {
 				log.Printf("Error connecting to server %s: %v", server.Name, err)
 			} else {
-				// Server is connected
 				status["status"] = "connected"
 
-				// Get user count
 				var userCount int
-				err = db.QueryRow("SELECT COUNT(*) FROM pg_user").Scan(&userCount)
-				if err == nil {
+				if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM pg_user").Scan(&userCount); err == nil {
 					status["users"] = userCount
 				}
 
-				// Get database count
 				var dbCount int
-				err = db.QueryRow("SELECT COUNT(*) FROM pg_database WHERE datistemplate = false").Scan(&dbCount)
-				if err == nil {
+				if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM pg_database WHERE datistemplate = false").Scan(&dbCount); err == nil {
 					status["databases"] = dbCount
 				}
 			}
@@ -1045,466 +1347,276 @@ func InitServer() {
 			serverStatuses = append(serverStatuses, status)
 		}
 
-		log.Printf("Status page: Passing %d HAPorts and %d Services to template", len(haPorts), len(services))
+		nodeHeaders := make([]NodeHeader, 0, nodeCount)
+		for i := 0; i < nodeCount; i++ {
+			if i < len(clusterNodes) {
+				nodeHeaders = append(nodeHeaders, clusterNodes[i])
+			} else {
+				nodeHeaders = append(nodeHeaders, NodeHeader{Name: fmt.Sprintf("Node %d", i+1)})
+			}
+		}
 
 		c.HTML(200, "status.html", gin.H{
+			"Auth":                 authenticator.View(c),
 			"Servers":              servers,
 			"ServerStatuses":       serverStatuses,
 			"HAPorts":              haPorts,
 			"Services":             services,
+			"NodeCount":            nodeCount,
+			"NodeHeaders":          nodeHeaders,
 			"PMMStatusURL":         pmmURL,
 			"PMMQanURL":            queryIframeURL,
 			"BadgeRefreshInterval": badgeRefreshInterval,
+			"Version":              version,
 		})
 	})
 
-	router.GET("/users", func(c *gin.Context) {
-		allUsers, allDatabases := aggregateUsers(connectionManager, servers)
-		c.HTML(200, "users.html", PageData{
-			Servers:              servers,
-			SelectedServer:       "",
-			Users:                allUsers,
-			Databases:            allDatabases,
-			HAPorts:              haPorts,
-			Services:             services,
-			PMMStatusURL:         pmmURL,
-			PMMQanURL:            queryIframeURL,
-			BadgeRefreshInterval: badgeRefreshInterval,
-		})
+	app.GET("/users", func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
+		defer cancel()
+
+		allUsers, allDatabases := aggregateUsers(ctx, connectionManager, servers)
+		c.HTML(200, "users.html", PageData{Users: allUsers, Databases: allDatabases, Auth: authenticator.View(c)})
 	})
 
 	// Group API routes under /api/v1
-	v1 := router.Group("/api/v1")
+	v1 := app.Group("/api/v1")
+	v1.Use(authenticator.Require(PermView))
 	{
-		// Add server list endpoint
+		v1.GET("/auth/me", authenticator.Me())
+		v1.POST("/auth/password", authenticator.ChangePassword())
+		v1.GET("/auth/users", authenticator.Require(PermManagePanelUsers), authenticator.ListUsers())
+		v1.POST("/auth/users", authenticator.Require(PermManagePanelUsers), authenticator.CreateUser())
+		v1.PUT("/auth/users/:username", authenticator.Require(PermManagePanelUsers), authenticator.UpdateUser())
+		v1.DELETE("/auth/users/:username", authenticator.Require(PermManagePanelUsers), authenticator.DeleteUser())
+
 		v1.GET("/servers", func(c *gin.Context) {
-			c.JSON(200, gin.H{
-				"servers": servers,
-			})
+			c.JSON(200, gin.H{"servers": servers})
 		})
 
-		// Add dedicated status endpoint for lightweight status data refresh
 		v1.GET("/status", func(c *gin.Context) {
-			// Add cache headers to prevent unnecessary requests
 			c.Header("Cache-Control", "no-cache, must-revalidate")
-			c.Header("Last-Modified", time.Now().UTC().Format(time.RFC1123))
 
-			statusData := gin.H{
-				"HAPorts":              haPorts,
-				"Services":             services,
-				"PMMStatusURL":         config.PMMStatusURL,
-				"PMMQanURL":            config.PMMQanURL,
-				"BadgeRefreshInterval": config.BadgeRefreshInterval,
-				"ServerTime":           time.Now().Unix(),
-				"Version":              "1.0", // For API versioning
-			}
-
-			// Add timing for performance monitoring
 			start := time.Now()
 			defer func() {
-				duration := time.Since(start)
 				log.Printf("Status endpoint served in %v: %d ports, %d services",
-					duration, len(haPorts), len(services))
+					time.Since(start), len(haPorts), len(services))
 			}()
 
-			c.JSON(200, statusData)
+			c.JSON(200, gin.H{
+				"HAPorts":              haPorts,
+				"Services":             services,
+				"PMMStatusURL":         pmmURL,
+				"PMMQanURL":            queryIframeURL,
+				"BadgeRefreshInterval": badgeRefreshInterval,
+				"ServerTime":           time.Now().Unix(),
+				"Version":              version,
+			})
 		})
 
 		v1.GET("/users", func(c *gin.Context) {
-			allUsers, allDatabases := aggregateUsers(connectionManager, servers)
-			c.JSON(200, PageData{
-				Servers:              servers,
-				SelectedServer:       "",
-				Users:                allUsers,
-				Databases:            allDatabases,
-				HAPorts:              haPorts,
-				Services:             services,
-				PMMStatusURL:         pmmURL,
-				PMMQanURL:            queryIframeURL,
-				BadgeRefreshInterval: badgeRefreshInterval,
-			})
+			ctx, cancel := context.WithTimeout(c.Request.Context(), 20*time.Second)
+			defer cancel()
+
+			allUsers, allDatabases := aggregateUsers(ctx, connectionManager, servers)
+			c.JSON(200, PageData{Users: allUsers, Databases: allDatabases})
 		})
 
-		v1.POST("/users", func(c *gin.Context) {
+		v1.POST("/users", authenticator.Require(PermManageDBUsers), func(c *gin.Context) {
 			var req CreateUserRequest
-			if err := c.BindJSON(&req); err != nil {
+			if err := c.ShouldBindJSON(&req); err != nil {
 				log.Printf("Bind error: %v", err)
-				c.JSON(400, gin.H{"error": "Invalid form data"})
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+				return
+			}
+			req.Username = strings.TrimSpace(req.Username)
+			if req.Username == "" || req.Password == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Username and password are required"})
 				return
 			}
 
-			// Parse server information from database names (format: "dbname@servername")
-			serverDatabases := make(map[string][]string)
-			for _, dbName := range req.Databases {
-				if strings.Contains(dbName, "@") {
-					parts := strings.Split(dbName, "@")
-					if len(parts) == 2 {
-						db, server := parts[0], parts[1]
-						if db == "postgres" {
-							c.JSON(400, gin.H{"error": "Cannot grant access to postgres database"})
-							return
-						}
-						serverDatabases[server] = append(serverDatabases[server], db)
-					}
-				}
-			}
-
-			if len(serverDatabases) == 0 {
-				c.JSON(400, gin.H{"error": "No valid databases selected"})
+			serverDatabases, err := selectedDatabases(req.Databases)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
 
-			// Create user on each server that has selected databases
-			for serverName, databases := range serverDatabases {
+			ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+			defer cancel()
+
+			quotedUser := pq.QuoteIdentifier(req.Username)
+			var warnings []string
+
+			serverNames := make([]string, 0, len(serverDatabases))
+			for serverName := range serverDatabases {
+				serverNames = append(serverNames, serverName)
+			}
+			sort.Strings(serverNames)
+
+			for _, serverName := range serverNames {
 				db, err := connectionManager.GetConnection(serverName)
 				if err != nil {
 					log.Printf("Error connecting to server %s: %v", serverName, err)
-					c.JSON(500, gin.H{"error": fmt.Sprintf("Failed to connect to server %s", serverName)})
+					c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to connect to server %s", serverName)})
 					return
 				}
 
-				// First check if user exists
 				var exists bool
-				err = db.QueryRow("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = $1)", req.Username).Scan(&exists)
-				if err != nil {
+				if err := db.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = $1)", req.Username).Scan(&exists); err != nil {
 					log.Printf("Error checking user existence on %s: %v", serverName, err)
-					c.JSON(500, gin.H{"error": fmt.Sprintf("Failed to check user on server %s", serverName)})
+					c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to check user on server %s", serverName)})
 					return
 				}
 				if exists {
-					c.JSON(400, gin.H{"error": fmt.Sprintf("User already exists on server %s", serverName)})
+					c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("User already exists on server %s", serverName)})
 					return
 				}
 
-				// Create user with proper parameter handling
-				createQuery := fmt.Sprintf(
-					"CREATE USER %s WITH PASSWORD '%s'",
-					req.Username,
-					req.Password,
-				)
-
-				if _, err = db.Exec(createQuery); err != nil {
+				// Identifiers and literals cannot be bound as parameters in
+				// CREATE ROLE, so quote both explicitly to keep them inert.
+				createQuery := "CREATE USER " + quotedUser + " WITH PASSWORD " + pq.QuoteLiteral(req.Password) // #nosec G202 -- both fragments are pg-quoted
+				if _, err := db.ExecContext(ctx, createQuery); err != nil {
 					log.Printf("Error creating user on %s: %v", serverName, err)
 					errorMsg := fmt.Sprintf("Failed to create user on server %s", serverName)
-					errStr := err.Error()
-
 					switch {
-					case strings.Contains(errStr, "permission denied"):
+					case strings.Contains(err.Error(), "permission denied"):
 						errorMsg = fmt.Sprintf("Permission denied on server %s - insufficient privileges", serverName)
-					case strings.Contains(errStr, "password authentication failed"):
+					case strings.Contains(err.Error(), "password authentication failed"):
 						errorMsg = "Invalid password format"
-					case strings.Contains(errStr, "role name contains invalid characters"):
+					case strings.Contains(err.Error(), "role name contains invalid characters"):
 						errorMsg = "Username contains invalid characters"
 					}
-
-					c.JSON(400, gin.H{"error": errorMsg})
+					c.JSON(http.StatusBadRequest, gin.H{"error": errorMsg})
 					return
 				}
 
-				// Grant permissions to selected databases on this server
-				for _, dbName := range databases {
-					// First grant connect privilege
-					grantQuery := fmt.Sprintf(`GRANT CONNECT ON DATABASE "%s" TO "%s"`,
-						strings.Replace(dbName, `"`, `""`, -1),
-						strings.Replace(req.Username, `"`, `""`, -1),
-					)
-					if _, err = db.Exec(grantQuery); err != nil {
-						log.Printf("Error granting CONNECT on %s/%s: %v", serverName, dbName, err)
-						continue
-					}
-
-					// Connect to the database to grant schema-level privileges
-					serverConfig, exists := connectionManager.GetServerConfig(serverName)
-					if !exists {
-						continue
-					}
-
-					// Get leader connection details from Patroni cluster
-					host, port, err := connectionManager.getLeaderConnectionDetails(serverName)
-					if err != nil {
-						log.Printf("Error getting leader connection details for %s: %v", serverName, err)
-						continue
-					}
-
-					dbConnStr := fmt.Sprintf(
-						"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-						host,
-						port,
-						serverConfig.User,
-						serverConfig.Password,
-						dbName,
-						serverConfig.SSLMode,
-					)
-
-					dbConn, err := sql.Open("postgres", dbConnStr)
-					if err != nil {
-						log.Printf("Error connecting to database %s/%s: %v", serverName, dbName, err)
-						continue
-					}
-					defer dbConn.Close()
-
-					// Grant schema-level privileges
-					schemaQueries := []string{
-						fmt.Sprintf(`GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "%s"`,
-							strings.Replace(req.Username, `"`, `""`, -1)),
-						fmt.Sprintf(`GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO "%s"`,
-							strings.Replace(req.Username, `"`, `""`, -1)),
-						fmt.Sprintf(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO "%s"`,
-							strings.Replace(req.Username, `"`, `""`, -1)),
-						fmt.Sprintf(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON SEQUENCES TO "%s"`,
-							strings.Replace(req.Username, `"`, `""`, -1)),
-					}
-
-					for _, query := range schemaQueries {
-						if _, err = dbConn.Exec(query); err != nil {
-							log.Printf("Error executing schema grant query on %s/%s: %v", serverName, dbName, err)
-							// Continue with other queries even if one fails
-						}
-					}
-				}
+				cfg, _ := connectionManager.GetServerConfig(serverName)
+				warnings = append(warnings, grantUserAccess(ctx, connectionManager, db, cfg, req.Username, serverDatabases[serverName])...)
 			}
 
-			c.JSON(200, gin.H{"message": "User created successfully on all selected servers"})
+			audit(c, "db_user_create", req.Username, "ok")
+			response := gin.H{"message": "User created successfully on all selected servers"}
+			if len(warnings) > 0 {
+				response["warnings"] = warnings
+			}
+			c.JSON(http.StatusOK, response)
 		})
 
-		v1.DELETE("/users/:username", func(c *gin.Context) {
+		v1.DELETE("/users/:username", authenticator.Require(PermManageDBUsers), func(c *gin.Context) {
 			usernameWithServer := c.Param("username")
-
-			// Parse username and server (format: "username@servername")
-			if !strings.Contains(usernameWithServer, "@") {
-				c.JSON(400, gin.H{"error": "Invalid username format. Expected username@server"})
+			username, serverName, ok := splitCompound(usernameWithServer)
+			if !ok {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid username format. Expected username@server"})
 				return
 			}
-
-			parts := strings.Split(usernameWithServer, "@")
-			if len(parts) != 2 {
-				c.JSON(400, gin.H{"error": "Invalid username format. Expected username@server"})
-				return
-			}
-
-			username, serverName := parts[0], parts[1]
 
 			db, err := connectionManager.GetConnection(serverName)
 			if err != nil {
 				log.Printf("Error connecting to server %s: %v", serverName, err)
-				c.JSON(500, gin.H{"error": fmt.Sprintf("Failed to connect to server %s", serverName)})
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to connect to server %s", serverName)})
 				return
 			}
 
-			// Don't allow deletion of current user
 			serverConfig, exists := connectionManager.GetServerConfig(serverName)
-			if exists && username == serverConfig.User {
-				c.JSON(400, gin.H{"error": "Cannot delete the current user"})
+			if !exists {
+				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Unknown server %s", serverName)})
+				return
+			}
+			if username == serverConfig.User {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot delete the current user"})
 				return
 			}
 
-			// First get all databases
-			rows, err := db.Query(`
-				SELECT datname
-				FROM pg_database
-				WHERE datistemplate = false
-			`)
-			if err == nil {
-				defer rows.Close()
-				for rows.Next() {
-					var dbName string
-					if err := rows.Scan(&dbName); err == nil {
-						// Connect to each database to revoke schema-level privileges
-						// Get leader connection details from Patroni cluster
-						host, port, err := connectionManager.getLeaderConnectionDetails(serverName)
-						if err != nil {
-							log.Printf("Error getting leader connection details for %s: %v", serverName, err)
-							continue
-						}
+			ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+			defer cancel()
 
-						dbConnStr := fmt.Sprintf(
-							"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
-							host,
-							port,
-							serverConfig.User,
-							serverConfig.Password,
-							dbName,
-							serverConfig.SSLMode,
-						)
-
-						dbConn, err := sql.Open("postgres", dbConnStr)
-						if err != nil {
-							log.Printf("Error connecting to database %s/%s: %v", serverName, dbName, err)
-							continue
-						}
-						defer dbConn.Close()
-
-						// Revoke all privileges and reassign owned objects
-						revokeQueries := []string{
-							fmt.Sprintf(`REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM "%s"`, username),
-							fmt.Sprintf(`REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM "%s"`, username),
-							fmt.Sprintf(`REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM "%s"`, username),
-							fmt.Sprintf(`REVOKE ALL PRIVILEGES ON DATABASE "%s" FROM "%s"`, dbName, username),
-							fmt.Sprintf(`REASSIGN OWNED BY "%s" TO postgres`, username),
-							fmt.Sprintf(`DROP OWNED BY "%s"`, username),
-						}
-
-						for _, query := range revokeQueries {
-							if _, err := dbConn.Exec(query); err != nil {
-								log.Printf("Error executing revoke query on %s/%s: %v", serverName, dbName, err)
-								// Continue with other queries even if one fails
-							}
-						}
-					}
-				}
-			}
-
-			// Finally drop the user
-			dropQuery := fmt.Sprintf(`DROP USER IF EXISTS "%s"`, username)
-			_, err = db.Exec(dropQuery)
-			if err != nil {
+			warnings := revokeUserAccess(ctx, connectionManager, db, serverConfig, username)
+			// Drop the role only after every database has been cleaned up.
+			if _, err := db.ExecContext(ctx, "DROP ROLE IF EXISTS "+pq.QuoteIdentifier(username)); err != nil {
 				log.Printf("Error deleting user %s on %s: %v", username, serverName, err)
-				c.JSON(500, gin.H{"error": fmt.Sprintf("Failed to delete user on server %s", serverName)})
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to delete user on server %s", serverName)})
 				return
 			}
 
-			c.JSON(200, gin.H{"message": fmt.Sprintf("User deleted successfully from server %s", serverName)})
+			audit(c, "db_user_delete", username, "ok")
+			response := gin.H{"message": fmt.Sprintf("User deleted successfully from server %s", serverName)}
+			if len(warnings) > 0 {
+				response["warnings"] = warnings
+			}
+			c.JSON(http.StatusOK, response)
 		})
 
-		// Add a new endpoint for queries in JSON format - aggregate from all servers
+		// Active queries across every cluster member.
 		v1.GET("/queries", func(c *gin.Context) {
-			type QueryWithServer struct {
-				Query
-				Server     string `json:"server"`
-				BackendPID int    `json:"backend_pid"`
-				MemberName string `json:"member_name"`
-				MemberHost string `json:"member_host"`
-				MemberPort int    `json:"member_port"`
-				MemberRole string `json:"member_role"`
-			}
+			ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+			defer cancel()
 
-			var allQueries []QueryWithServer
-
-			for _, server := range servers {
-				backends := connectionManager.GetBackendConnections(server.Name)
-				if len(backends) == 0 {
-					log.Printf("No backend connections available for server %s", server.Name)
-					continue
-				}
-
-				for _, backend := range backends {
-					userFilter := buildUserFilterClause()
-					querySQL := fmt.Sprintf(`
-						SELECT DISTINCT ON (COALESCE(leader_pid, pid))
-							COALESCE(leader_pid, pid) AS pid,
-							usename,
-						COALESCE(datname, 'system') as datname,
-						ROUND(EXTRACT(EPOCH FROM now() - query_start))::text || 's' as duration,
-						query
-						FROM pg_stat_activity
-						WHERE state = 'active'
-						AND query NOT ILIKE '%%pg_stat_activity%%'
-						AND pid != pg_backend_pid()
-						%s
-						ORDER BY pid, query_start ASC;
-					`, userFilter)
-
-					rows, err := backend.DB.Query(querySQL)
-
-					if err != nil {
-						log.Printf("Error querying active queries from server %s backend PID %d: %v", server.Name, backend.PID, err)
-						continue
-					}
-
-					for rows.Next() {
-						var q Query
-						err := rows.Scan(&q.PID, &q.Username, &q.Database, &q.Duration, &q.Query)
-						if err != nil {
-							log.Printf("Error scanning query row from server %s backend PID %d: %v", server.Name, backend.PID, err)
-							continue
-						}
-						// Server identity is carried in QueryWithServer.Server below;
-						// don't pollute the displayed username/database with a suffix.
-
-						qWithServer := QueryWithServer{
-							Query:      q,
-							Server:     server.Name,
-							BackendPID: backend.PID,
-							MemberName: backend.MemberName,
-							MemberHost: backend.Host,
-							MemberPort: backend.Port,
-							MemberRole: backend.Role,
-						}
-						allQueries = append(allQueries, qWithServer)
-					}
-					rows.Close()
-				}
-			}
-
-			c.JSON(200, gin.H{"queries": allQueries})
+			c.JSON(200, gin.H{"queries": collectActiveQueries(ctx, connectionManager, servers)})
 		})
 
-		// Add this endpoint to the API group - handle server-specific query termination
-		v1.DELETE("/queries/:pid", func(c *gin.Context) {
-			pid := c.Param("pid")
+		// Terminate a backend on a specific server.
+		v1.DELETE("/queries/:pid", authenticator.Require(PermKillQuery), func(c *gin.Context) {
+			pid, err := strconv.Atoi(c.Param("pid"))
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid PID"})
+				return
+			}
 			serverName := c.Query("server")
-
 			if serverName == "" {
-				c.JSON(400, gin.H{"error": "Server parameter is required"})
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Server parameter is required"})
 				return
 			}
 
 			backends := connectionManager.GetBackendConnections(serverName)
 			if len(backends) == 0 {
 				log.Printf("No backend connections available for server %s", serverName)
-				c.JSON(500, gin.H{"error": fmt.Sprintf("No connections available for server %s", serverName)})
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("No connections available for server %s", serverName)})
 				return
 			}
 
-			// Try to find and kill the query on any backend of this server
-			var queryFound bool
-			var killSuccessful bool
+			ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+			defer cancel()
 
+			var queryFound bool
 			for _, backend := range backends {
-				// First check if query exists on this backend
 				var exists bool
-				err := backend.DB.QueryRow("SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE pid = $1)", pid).Scan(&exists)
-				if err != nil {
+				if err := backend.DB.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE pid = $1)", pid).Scan(&exists); err != nil {
 					log.Printf("Error checking query existence on %s backend PID %d: %v", serverName, backend.PID, err)
 					continue
 				}
-
-				if exists {
-					queryFound = true
-					// Kill the query and check the result boolean
-					var ok bool
-					err = backend.DB.QueryRow("SELECT pg_terminate_backend($1)", pid).Scan(&ok)
-					if err != nil {
-						log.Printf("Terminate backend %s failed on %s backend PID %d: %v", pid, serverName, backend.PID, err)
-						continue
-					}
-
-					if ok {
-						killSuccessful = true
-						log.Printf("Successfully killed query %s on server %s backend PID %d", pid, serverName, backend.PID)
-						c.JSON(200, gin.H{"message": fmt.Sprintf("Query killed successfully on server %s", serverName)})
-						return
-					} else {
-						log.Printf("Terminate backend %s returned false on %s backend PID %d", pid, serverName, backend.PID)
-					}
+				if !exists {
+					continue
 				}
+
+				queryFound = true
+				var ok bool
+				if err := backend.DB.QueryRowContext(ctx, "SELECT pg_terminate_backend($1)", pid).Scan(&ok); err != nil {
+					log.Printf("Terminate backend %d failed on %s backend PID %d: %v", pid, serverName, backend.PID, err)
+					continue
+				}
+				if ok {
+					log.Printf("Successfully killed query %d on server %s backend PID %d", pid, serverName, backend.PID)
+					audit(c, "query_kill", fmt.Sprintf("%d@%s", pid, serverName), "ok")
+					c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("Query killed successfully on server %s", serverName)})
+					return
+				}
+				log.Printf("Terminate backend %d returned false on %s backend PID %d", pid, serverName, backend.PID)
 			}
 
 			if !queryFound {
-				c.JSON(404, gin.H{"error": "Query not found on any backend"})
+				c.JSON(http.StatusNotFound, gin.H{"error": "Query not found on any backend"})
 				return
 			}
-
-			if !killSuccessful {
-				c.JSON(409, gin.H{"error": "Query could not be terminated"})
-				return
-			}
+			c.JSON(http.StatusConflict, gin.H{"error": "Query could not be terminated"})
 		})
 
 		// Cluster topology endpoint - returns Patroni cluster members enriched
 		// with per-replica lag detail pulled from pg_stat_replication on the leader.
 		v1.GET("/topology", func(c *gin.Context) {
 			c.Header("Cache-Control", "no-cache")
+
+			ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+			defer cancel()
 
 			resp := TopologyResponse{
 				Servers:     make([]TopologyServer, 0, len(servers)),
@@ -1549,7 +1661,7 @@ func InitServer() {
 					continue
 				}
 
-				rows, qErr := db.Query(`
+				rows, qErr := db.QueryContext(ctx, `
 					SELECT
 					  COALESCE(application_name, ''),
 					  COALESCE(state, ''),
@@ -1580,7 +1692,7 @@ func InitServer() {
 					}
 					replRows = append(replRows, r)
 				}
-				rows.Close()
+				_ = rows.Close()
 
 				// Match rows to members by application_name == member.Name.
 				for i := range ts.Members {
@@ -1610,101 +1722,57 @@ func InitServer() {
 		})
 	}
 
-	// Add the query route handler for the query page - aggregate from all servers
-	router.GET("/query", func(c *gin.Context) {
-		type QueryWithServer struct {
-			Query
-			Server     string `json:"server"`
-			BackendPID int    `json:"backend_pid"`
-			MemberName string `json:"member_name"`
-			MemberHost string `json:"member_host"`
-			MemberPort int    `json:"member_port"`
-			MemberRole string `json:"member_role"`
-		}
-
-		var allQueries []QueryWithServer
-
-		for _, server := range servers {
-			backends := connectionManager.GetBackendConnections(server.Name)
-			if len(backends) == 0 {
-				log.Printf("No backend connections available for server %s", server.Name)
-				continue
-			}
-
-			for _, backend := range backends {
-				userFilter := buildUserFilterClause()
-				querySQL := fmt.Sprintf(`
-						SELECT DISTINCT ON (COALESCE(leader_pid, pid))
-							COALESCE(leader_pid, pid) AS pid,
-							usename,
-						COALESCE(datname, 'system') as datname,
-						ROUND(EXTRACT(EPOCH FROM now() - query_start))::text || 's' as duration,
-						query
-						FROM pg_stat_activity
-						WHERE state = 'active'
-						AND query NOT ILIKE '%%pg_stat_activity%%'
-						AND pid != pg_backend_pid()
-						%s
-						ORDER BY pid, query_start ASC;
-				`, userFilter)
-
-				rows, err := backend.DB.Query(querySQL)
-				if err != nil {
-					log.Printf("Error querying active queries from server %s backend PID %d: %v", server.Name, backend.PID, err)
-					continue
-				}
-
-				for rows.Next() {
-					var q Query
-					err := rows.Scan(&q.PID, &q.Username, &q.Database, &q.Duration, &q.Query)
-					if err != nil {
-						log.Printf("Error scanning query row from server %s backend PID %d: %v", server.Name, backend.PID, err)
-						continue
-					}
-					// Server identity is carried in QueryWithServer.Server below;
-					// don't pollute the displayed username/database with a suffix.
-
-					qWithServer := QueryWithServer{
-						Query:      q,
-						Server:     server.Name,
-						BackendPID: backend.PID,
-						MemberName: backend.MemberName,
-						MemberHost: backend.Host,
-						MemberPort: backend.Port,
-						MemberRole: backend.Role,
-					}
-					allQueries = append(allQueries, qWithServer)
-				}
-				rows.Close()
-			}
-		}
+	app.GET("/query", func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+		defer cancel()
 
 		c.HTML(200, "query.html", gin.H{
-			"Servers": servers,
-			"Queries": allQueries,
+			"Auth":    authenticator.View(c),
+			"Queries": collectActiveQueries(ctx, connectionManager, servers),
 		})
 	})
 
-	// Add route handler for query analytics page
-	router.GET("/query-analytics", func(c *gin.Context) {
+	app.GET("/query-analytics", func(c *gin.Context) {
 		c.HTML(200, "query_analytics.html", gin.H{
-			"Servers":   servers,
-			"PMMQanURL": config.PMMQanURL,
+			"Auth":      authenticator.View(c),
+			"PMMQanURL": queryIframeURL,
 		})
 	})
 
 	// Cluster topology page. Actual data is fetched client-side from
 	// /api/v1/topology and refreshed every 5 seconds.
-	router.GET("/topology", func(c *gin.Context) {
+	app.GET("/topology", func(c *gin.Context) {
 		c.HTML(200, "topology.html", gin.H{
-			"Servers": servers,
+			"Auth":    authenticator.View(c),
 			"HAPorts": haPorts,
 		})
 	})
 
-	// Start the server
+	// Start the server with timeouts: a management panel must not be held open
+	// by a slow client.
 	log.Printf("Starting server on :%s", serverPort)
-	if err := router.Run(":" + serverPort); err != nil {
+	server := &http.Server{
+		Addr:              ":" + serverPort,
+		Handler:           router,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal("Failed to start server:", err)
 	}
+}
+
+func readPasswordLine() (string, error) {
+	reader := bufio.NewReader(os.Stdin)
+	line, err := reader.ReadString('\n')
+	if err != nil && line == "" {
+		return "", err
+	}
+	password := strings.TrimSpace(line)
+	if password == "" {
+		return "", errors.New("empty password")
+	}
+	return password, nil
 }
