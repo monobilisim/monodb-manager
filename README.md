@@ -251,7 +251,7 @@ more grants failed; the response stays `200` because the role exists.
 
 ## Building
 
-monodb-manager is a standard Go module (Go 1.26+):
+monodb-manager is a standard Go module (Go 1.27.3+):
 
 ```bash
 go build -o monodb-manager .
