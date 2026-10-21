@@ -95,3 +95,12 @@
     top: 1rem;
   }
 }
+
+/* Tailwind utility order can change between builds; modal roots must always
+   stay hidden until their toggle removes the class. */
+#databaseModal.hidden,
+#deleteModal.hidden,
+#errorModal.hidden,
+#killModal.hidden {
+  display: none !important;
+}
