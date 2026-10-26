@@ -74,6 +74,7 @@ metrics — all from a single, dependency-free Go binary.
 | `/users`            | User and database grant management                       |
 | `/query`            | Active PostgreSQL queries                                |
 | `/query-analytics`  | Embedded PMM Query Analytics                             |
+| `/dashboards`       | Configured PMM dashboards, embedded and tabbed           |
 
 ---
 
@@ -159,6 +160,14 @@ services:
 # Percona PMM embeds
 pmm_status_url: "https://pmm.example.com/graph/d/.../status"
 pmm_qan_url: "https://pmm.example.com/graph/d/.../qan"
+
+# Dashboards embedded under /dashboards, one visible at a time (tabs).
+# `name` is the tab label and the ?d= selector, `url` is the Grafana dashboard.
+pmm_dashboards:
+  - name: PostgreSQL Overview
+    url: "https://pmm.example.com/graph/d/postgresql-instance-overview/postgresql-instance-overview?var-environment=prod"
+  - name: Node Summary
+    url: "https://pmm.example.com/graph/d/node-instance-summary/node-instance-summary"
 
 # UI badge refresh interval in milliseconds (default 3000)
 badge_refresh_interval: 3000

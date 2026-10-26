@@ -171,6 +171,12 @@
             {{if eq .Page "query-analytics"}}<span class="sidebar-active-dot ml-auto h-1.5 w-1.5 rounded-full bg-white"></span>{{end}}
         </a>
 
+        <a href="/dashboards" title="PMM Panoları" class="sidebar-link group {{if eq .Page "dashboards"}}is-active{{end}}">
+            <svg class="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+            <span class="sidebar-label">PMM Panoları</span>
+            {{if eq .Page "dashboards"}}<span class="sidebar-active-dot ml-auto h-1.5 w-1.5 rounded-full bg-white"></span>{{end}}
+        </a>
+
         <a href="/query" title="Aktif Sorgular" class="sidebar-link group {{if eq .Page "query"}}is-active{{end}}">
             <svg class="sidebar-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
             <span class="sidebar-label">Aktif Sorgular</span>
