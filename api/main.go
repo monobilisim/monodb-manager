@@ -87,6 +87,9 @@ type Config struct {
 	// Query Analytics iframe URL
 	PMMQanURL string `yaml:"pmm_qan_url"`
 
+	// Grafana dashboards embedded under /dashboards
+	PMMDashboards []PMMDashboard `yaml:"pmm_dashboards"`
+
 	// HAProxy port badges
 	Ports []HAProxyPort `yaml:"ports"`
 
@@ -438,6 +441,12 @@ type User struct {
 }
 
 // HAProxyPort is a routing endpoint advertised by HAProxy.
+// PMMDashboard is one Grafana dashboard embedded on the dashboards page.
+type PMMDashboard struct {
+	Name string `yaml:"name"`
+	URL  string `yaml:"url"`
+}
+
 type HAProxyPort struct {
 	Port   int    `yaml:"port"`
 	Type   string `yaml:"type"`
@@ -1280,6 +1289,7 @@ func InitServer(assets fs.FS, version string) {
 	services := config.Services
 	pmmURL := config.PMMStatusURL
 	queryIframeURL := config.PMMQanURL
+	dashboardList := config.PMMDashboards
 	badgeRefreshInterval := config.BadgeRefreshInterval
 	if badgeRefreshInterval == 0 {
 		badgeRefreshInterval = 3000
@@ -1737,6 +1747,30 @@ func InitServer(assets fs.FS, version string) {
 			"Auth":      authenticator.View(c),
 			"PMMQanURL": queryIframeURL,
 		})
+	})
+
+	// Configured PMM dashboards, one visible at a time; ?d=<name> picks it.
+	app.GET("/dashboards", func(c *gin.Context) {
+		selected := 0
+		if name := c.Query("d"); name != "" {
+			for i, dashboard := range dashboardList {
+				if dashboard.Name == name {
+					selected = i
+					break
+				}
+			}
+		}
+		page := gin.H{
+			"Auth":         authenticator.View(c),
+			"Dashboards":   dashboardList,
+			"Selected":     "",
+			"DashboardURL": "",
+		}
+		if len(dashboardList) > 0 {
+			page["Selected"] = dashboardList[selected].Name
+			page["DashboardURL"] = dashboardList[selected].URL
+		}
+		c.HTML(200, "dashboards.html", page)
 	})
 
 	// Cluster topology page. Actual data is fetched client-side from
