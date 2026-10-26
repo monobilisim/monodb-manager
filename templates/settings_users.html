@@ -152,6 +152,10 @@
 </div>
 
 <script>
+    function toggleDarkMode() {
+        localStorage.setItem('darkMode', document.documentElement.classList.toggle('dark'));
+    }
+
     function showError(message) {
         const box = document.getElementById('pageError');
         box.textContent = message;
