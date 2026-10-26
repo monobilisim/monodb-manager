@@ -79,6 +79,56 @@ func RoleLabel(role string) string {
 	}
 }
 
+var roleOrder = []string{RoleViewer, RoleOperator, RoleAdmin}
+
+var roleSummaries = map[string]string{
+	RoleViewer:   "Salt okuma",
+	RoleOperator: "İzleyici + sorgu sonlandırma, DB kullanıcı/yetki yönetimi",
+	RoleAdmin:    "Operatör + panel kullanıcılarını yönetme",
+}
+
+var permissionLabels = map[Permission]string{
+	PermView:             "Sayfaları ve API'yi görüntüleme",
+	PermKillQuery:        "Aktif sorguyu sonlandırma",
+	PermManageDBUsers:    "Veritabanı kullanıcı ve yetkilerini yönetme",
+	PermManagePanelUsers: "Panel kullanıcılarını ve rollerini yönetme",
+}
+
+// RoleColumn is one role column of the matrix shown on the panel users page.
+type RoleColumn struct {
+	Key     string
+	Label   string
+	Summary string
+}
+
+// RoleMatrixRow is one permission row; Granted is keyed by role.
+type RoleMatrixRow struct {
+	Label   string
+	Granted map[string]bool
+}
+
+func RoleColumns() []RoleColumn {
+	columns := make([]RoleColumn, 0, len(roleOrder))
+	for _, role := range roleOrder {
+		columns = append(columns, RoleColumn{Key: role, Label: RoleLabel(role), Summary: roleSummaries[role]})
+	}
+	return columns
+}
+
+// RoleMatrix derives the table from rolePermissions so the page cannot drift
+// from the permission checks that actually run.
+func RoleMatrix() []RoleMatrixRow {
+	rows := make([]RoleMatrixRow, 0, len(allPermissions))
+	for _, perm := range allPermissions {
+		row := RoleMatrixRow{Label: permissionLabels[perm], Granted: make(map[string]bool, len(roleOrder))}
+		for _, role := range roleOrder {
+			row.Granted[role] = RoleHasPermission(role, perm)
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
 var (
 	ErrUserNotFound = errors.New("panel user not found")
 	ErrUserExists   = errors.New("panel user already exists")
@@ -909,8 +959,10 @@ func (a *Authenticator) UsersPage() gin.HandlerFunc {
 			out = append(out, toPanelUserResponse(user))
 		}
 		c.HTML(http.StatusOK, "settings_users.html", gin.H{
-			"Users": out,
-			"Auth":  a.View(c),
+			"Users":       out,
+			"Auth":        a.View(c),
+			"RoleColumns": RoleColumns(),
+			"RoleMatrix":  RoleMatrix(),
 		})
 	}
 }
