@@ -288,6 +288,7 @@
 
             return `
                 <div data-node-id="${escHtml(member.name)}" data-node-role="${roleKey}"
+                     data-node-sync="${escHtml(member.sync_state || '')}"
                      data-lag-bytes="${escHtml(Number(member.lag_bytes || 0))}"
                      data-lag-label="${escHtml(formatBytes(Number(member.lag_bytes || 0)))}"
                      class="${cardClass} node-card relative rounded-lg shadow-sm ring-2 ${ring} bg-white dark:bg-gray-800 overflow-hidden">
@@ -329,7 +330,7 @@
         // look & feel but with fewer rows (no replication info).
         function renderLoadBalancerCard(port) {
             return `
-                <div data-lb-port="${escHtml(port.Port)}"
+                <div data-lb-port="${escHtml(port.Port)}" data-lb-type="${escHtml(port.Type)}"
                      class="lb-card node-card relative rounded-lg shadow-sm ring-2 ring-emerald-500 dark:ring-emerald-500/80 bg-white dark:bg-gray-800 overflow-hidden">
                     <header class="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-gray-100 dark:border-gray-700/60 bg-gray-50/50 dark:bg-gray-900/40">
                         <div class="flex items-center gap-2 min-w-0">
@@ -344,6 +345,8 @@
                             <dd class="text-sm text-gray-900 dark:text-white">${escHtml(port.Type)}</dd>
                             <dt class="text-xs text-gray-500 dark:text-gray-400">Port</dt>
                             <dd class="font-mono text-sm font-medium text-gray-900 dark:text-white">${escHtml(port.Port)}</dd>
+                            <dt class="text-xs text-gray-500 dark:text-gray-400">Hedef</dt>
+                            <dd data-lb-target class="font-mono text-xs text-gray-900 dark:text-white truncate">—</dd>
                         </div>
                     </div>
                 </div>
@@ -445,14 +448,14 @@
         }
 
         // Draw connection lines:
-        //   LB card -> Leader card   (horizontal, neutral-colored, with endpoint circles)
-        //   Leader  -> each Replica  (curved, lag-colored, arrow-terminated)
+        //   LB card -> the node that port fronts  (orthogonal, neutral, endpoint circles)
+        //   Leader  -> each Replica                (curved, lag-colored, arrow-terminated)
         function drawClusterLines(section) {
             const svg = section.querySelector('.connections-svg');
             if (!svg) return;
             const leaderEl = section.querySelector('.leader-card');
             const replicas = section.querySelectorAll('.replica-card');
-            const lbCards = section.querySelectorAll('.lb-card');
+            const lbCards = Array.from(section.querySelectorAll('.lb-card'));
 
             const wrapper = svg.parentElement;
             const wrapRect = wrapper.getBoundingClientRect();
@@ -476,19 +479,84 @@
             }
 
             const lRect = leaderEl.getBoundingClientRect();
-            const leaderLeftX = lRect.left - wrapRect.left;
             const leaderRightX = lRect.right - wrapRect.left;
             const leaderY = lRect.top + lRect.height / 2 - wrapRect.top;
+            const leaderTop = lRect.top - wrapRect.top;
+            const leaderBottom = lRect.bottom - wrapRect.top;
+            const leaderMidY = (leaderTop + leaderBottom) / 2;
+            const replicaEls = Array.from(replicas);
+            const syncOf = el => (el.dataset.nodeSync || 'async').toLowerCase();
 
-            lbCards.forEach(lb => {
+            // Each front end serves one role: master -> leader, sync/async ->
+            // the member advertising that sync state, plain replica -> a replica
+            // no other port already claimed.
+            const lbTargets = lbCards.map(lb => {
+                const t = (lb.dataset.lbType || '').toLowerCase();
+                if (/master|primary|write/.test(t)) return leaderEl;
+                // "async" contains "sync"; test it first so the async port is not
+                // resolved to the synchronous standby.
+                if (/async/.test(t)) return replicaEls.find(el => syncOf(el) === 'async') || null;
+                if (/sync/.test(t)) return replicaEls.find(el => syncOf(el) === 'sync') || null;
+                return null;
+            });
+            const claimed = new Set(lbTargets.filter(el => el && el !== leaderEl));
+            lbCards.forEach((lb, i) => {
+                if (lbTargets[i]) return;
+                const t = (lb.dataset.lbType || '').toLowerCase();
+                lbTargets[i] = /replica|standby|read/.test(t)
+                    ? (replicaEls.find(el => !claimed.has(el)) || replicaEls[replicaEls.length - 1] || leaderEl)
+                    : leaderEl;
+                if (lbTargets[i] !== leaderEl) claimed.add(lbTargets[i]);
+            });
+
+            // Several ports can front the same node; spread their entry points so
+            // the lines do not stack on top of each other.
+            const targetKey = el => el.dataset.nodeId || '';
+            const perTarget = {};
+            lbTargets.forEach(el => {
+                if (el) perTarget[targetKey(el)] = (perTarget[targetKey(el)] || 0) + 1;
+            });
+            const seenTarget = {};
+
+            lbCards.forEach((lb, i) => {
+                const target = lbTargets[i];
+                if (!target) return;
+                const slot = lb.querySelector('[data-lb-target]');
+                if (slot) slot.textContent = target.dataset.nodeId || '—';
+
+                const key = targetKey(target);
+                const total = perTarget[key] || 1;
+                const nth = (seenTarget[key] = (seenTarget[key] ?? -1) + 1);
+                const offset = (nth - (total - 1) / 2) * 14;
+
                 const r = lb.getBoundingClientRect();
                 const startX = r.right - wrapRect.left;
                 const startY = r.top + r.height / 2 - wrapRect.top;
-                const endX = leaderLeftX;
-                const endY = leaderY;
-                const midX = (startX + endX) / 2;
+                const tRect = target.getBoundingClientRect();
+                const endX = tRect.left - wrapRect.left;
+                const endY = tRect.top + tRect.height / 2 - wrapRect.top + offset;
+
+                // Stacked layout (narrow screens) puts nodes below the ports, so a
+                // line has nowhere to go; the Hedef row already names the target.
+                if (tRect.top >= r.bottom) return;
+
+                const busX = startX + Math.max(12, Math.min(40, (endX - startX) * 0.35)) + nth * 6;
+
+                let d;
+                if (target === leaderEl || endY <= leaderTop || endY >= leaderBottom) {
+                    d = `M ${startX} ${startY} L ${busX} ${startY} L ${busX} ${endY} L ${endX} ${endY}`;
+                } else {
+                    // Replica targets sit right of the leader card: detour through
+                    // the column gap so the line does not run behind the card.
+                    const gapX = (leaderRightX + endX) / 2 + nth * 6;
+                    const detourY = endY > leaderMidY
+                        ? Math.min(h - 6, leaderBottom + 14 + nth * 10)
+                        : Math.max(6, leaderTop - 14 - nth * 10);
+                    d = `M ${startX} ${startY} L ${busX} ${startY} L ${busX} ${detourY} L ${gapX} ${detourY} L ${gapX} ${endY} L ${endX} ${endY}`;
+                }
+
                 parts.push(`<circle cx="${startX}" cy="${startY}" r="3" fill="#9ca3af"></circle>`);
-                parts.push(`<path d="M ${startX} ${startY} L ${midX} ${startY} L ${midX} ${endY} L ${endX} ${endY}" fill="none" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="4 3"></path>`);
+                parts.push(`<path d="${d}" fill="none" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="4 3"></path>`);
                 parts.push(`<circle cx="${endX}" cy="${endY}" r="3" fill="#9ca3af"></circle>`);
             });
 
